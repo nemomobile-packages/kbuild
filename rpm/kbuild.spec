@@ -32,15 +32,6 @@ Release:        0
 Source0:        %{name}-%{version}.tar.bz2
 # Keep the suse changelog for history
 Source99:	kbuild.changes_suse
-Patch0:         kbuild-man.diff
-Patch1:         warnings.diff
-Patch2:         kbuild-dummy_noreturn.diff
-Patch3:         kbuild-func_missing_args.diff
-Patch4:         glibc-2.10.diff
-Patch5:         kbuild-pthread.diff
-Patch6:         kbuild-timestamps.diff
-Patch7:         kbuild-armv7l.diff
-Patch8:         kbuild-wrong-memset.patch
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 
 %description
@@ -61,15 +52,6 @@ Authors:
 
 %prep
 %setup -q -n %{name}-%{version}/%{name}
-%patch0
-%patch1
-%patch2
-%patch3
-%patch4
-%patch5 -p1
-%patch6 -p1
-%patch7 -p1
-%patch8 -p1
 
 %build
 export CFLAGS="$RPM_OPT_FLAGS"
