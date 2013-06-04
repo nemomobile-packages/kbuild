@@ -76,8 +76,10 @@ void outfmt(struct output *, const char *, ...)
     __attribute__((__format__(__printf__,2,3)));
 void out1fmt(struct shinstance *, const char *, ...)
     __attribute__((__format__(__printf__,2,3)));
+    /*
 void dprintf(struct shinstance *, const char *, ...)
     __attribute__((__format__(__printf__,2,3)));
+    */
 void fmtstr(char *, size_t, const char *, ...)
     __attribute__((__format__(__printf__,3,4)));
 void doformat(struct output *, const char *, va_list);
