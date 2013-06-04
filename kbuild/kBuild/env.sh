@@ -358,7 +358,7 @@ if test -z "$KBUILD_HOST_ARCH"; then
         hppa64|parisc64)
             KBUILD_HOST_ARCH='hppa64'
             ;;
-        arm|armv4l|armv5tel|armv5tejl)
+        arm|armv4l|armv5tel|armv5tejl|armv7l)
             KBUILD_HOST_ARCH='arm'
             ;;
         alpha)
