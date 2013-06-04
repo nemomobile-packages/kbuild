@@ -1,0 +1,13 @@
+Index: kbuild-0.1.9998svn2538/Config.kmk
+===================================================================
+--- kbuild-0.1.9998svn2538.orig/Config.kmk
++++ kbuild-0.1.9998svn2538/Config.kmk
+@@ -305,7 +305,7 @@ ifndef TEMPLATE_BIN_TOOL
+   TEMPLATE_BIN_INCS            += $(PATH_GNUMAKE_SRC)/glob /usr/local/include
+  endif
+  ifeq ($(KBUILD_TARGET),linux)
+-  TEMPLATE_BIN_LIBS            += rt
++  TEMPLATE_BIN_LIBS            += rt pthread
+  endif
+   TEMPLATE_BIN_CFLAGS.x86      += -m32
+   TEMPLATE_BIN_CFLAGS.sparc32  += -m32

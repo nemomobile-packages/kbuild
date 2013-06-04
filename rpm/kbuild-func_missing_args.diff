@@ -1,0 +1,13 @@
+Index: src/kmk/kmkbuiltin/printf.c
+===================================================================
+--- src/kmk/kmkbuiltin/printf.c.orig
++++ src/kmk/kmkbuiltin/printf.c
+@@ -206,7 +206,7 @@ char *kmk_builtin_func_printf(char *o, c
+ 
+ 	(void)funcname;
+ 	if (rc != 0)
+-		fatal (NILF, _("$(%s): failure rc=%d\n"), rc);
++		fatal (NILF, _("$(%s): failure rc=%d\n"), funcname, rc);
+ 	return o;
+ }
+ #endif

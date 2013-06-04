@@ -1,0 +1,132 @@
+-------------------------------------------------------------------
+Tue Dec 27 15:20:13 UTC 2011 - idonmez@suse.com
+
+- Fix wrong size parameter in memset call 
+
+-------------------------------------------------------------------
+Fri Dec  2 15:50:58 UTC 2011 - coolo@suse.com
+
+- add automake as buildrequire to avoid implicit dependency
+
+-------------------------------------------------------------------
+Mon Oct  3 22:56:19 UTC 2011 - joop.boonen@opensuse.org
+
+- Added a patch to support armv7l
+
+-------------------------------------------------------------------
+Tue Aug 23 08:35:11 UTC 2011 - mseben@gmail.com
+
+- updated to 0.1.9998 (svn revision 2538) in order to build 
+  virtualbox 4.1.2, for changes check http://svn.netlabs.org/kbuild/timeline
+
+-------------------------------------------------------------------
+Tue Nov  3 19:09:22 UTC 2009 - coolo@novell.com
+
+- updated patches to apply with fuzz=0
+
+-------------------------------------------------------------------
+Sun May 31 17:04:35 CEST 2009 - dmueller@suse.de
+
+- fix build against glibc 2.10
+
+-------------------------------------------------------------------
+Mon Apr 20 11:30:46 CEST 2009 - mseben@suse.cz
+
+- updated to 0.1.5svn2336
+ - updated Maintenance.kmk with a patch variable.
+ - backported 2320: qt3.kmk: Fixed PATH_SDK_QT3_LIB detection
+ - backported 2318: footer.kmk: No need to apply defpath to 2_OBJS
+    wholesale fashion, the handler(s) will do this
+ - backported 2316: *WATCOM*: Fixed RC commands.
+ - backported 2283: incdep.c: If we find LD_PRELOAD on linux, assume
+   the worst and disable threading
+ - backported 2277: kmk: Testcase for the $(if-expr 1==2,) crash.
+ - backported 2276: kmk: Do not crash if is missing the 3rd
+   argument, it is supposed to be optional...
+ - backported 2275: TAR.kmk,TARGZ.kmk,TARBZ2.kmk: Fixes and 
+   additions (BZ2).
+ - backported 2274: footer.kmk,header.kmk: Enhanced tools inhertiance
+ - backported 2273: VCC80X86: TOOL_VCC80X86_LINK_LIBRARY_OUTPUT_OUTPUT
+    -> TOOL_VCC80X86_LINK_LIBRARY_OUTPUT_MAYBE. oops
+ - backported 2272: qt4.kmk: Look for the QT4 tools in the 
+   alternative tools tree (x86) when present (amd64).
+ - backported 2271: header.kmk: KBUILD_DEVTOOLS, KBUILD_DEVTOOLS_TRG,
+   KBUILD_DEVTOOLS_HST, KBUILD_DEVTOOLS_TRG_ALT and KBUILD_DEVTOOLS_HST_ALT.
+- updated func_missing_args.diff
+
+-------------------------------------------------------------------
+Wed Feb 11 14:18:04 CET 2009 - dmueller@suse.de
+
+- merge with openSUSE Factory:
+  * remove macro from Version line again. Although it is nice,
+  it causes other problems
+
+-------------------------------------------------------------------
+Thu Jan 29 19:29:10 CET 2009 - suse-tux@gmx.de
+
+- create SvnInfo.kmk before the build starts
+
+-------------------------------------------------------------------
+Thu Jan 29 17:14:24 CET 2009 - suse-tux@gmx.de
+
+- updated to 0.1.5svn2270
+- use macros inside the spec
+- updated Patch1 (warnings.diff) - some parts are already fixed upstream
+- removed Patch3 (kbuild-buildfix.diff) because it isn't needed anymore
+- added Patch3 (kbuild-func_missing_args.diff) to prevent some compiler warnings
+
+-------------------------------------------------------------------
+Thu Dec 25 20:03:52 CET 2008 - suse-tux@gmx.de
+
+- updated to 0.1.4svn2112
+- added kbuild-buildfix.diff
+
+-------------------------------------------------------------------
+Tue Oct 14 18:28:33 CEST 2008 - meissner@suse.de
+
+- fixed an implicit getcwd()
+
+-------------------------------------------------------------------
+Thu Sep 25 16:35:58 CEST 2008 - mkudlvasr@suse.cz
+
+- merge into openSUSE Factory
+
+-------------------------------------------------------------------
+Thu Sep 18 19:53:10 CEST 2008 - suse-tux@gmx.de
+
+- added Patch2 (kbuild-dummy_noreturn.diff) in order to make the build checks happy
+
+-------------------------------------------------------------------
+Sun Sep 14 20:13:08 CEST 2008 - suse-tux@gmx.de
+
+- update to 0.1.3svn1785
+
+-------------------------------------------------------------------
+Sun Sep 14 00:39:02 CEST 2008 - suse-tux@gmx.de
+
+- update to 0.1.3svn1775
+- removed kbuild-r1599_KBUILD_SVN_INFO_KMK-fix.diff
+
+-------------------------------------------------------------------
+Tue May  6 23:52:43 CEST 2008 - dmueller@suse.de
+
+- fix uninit return values
+
+-------------------------------------------------------------------
+Sun May  4 14:04:34 CEST 2008 - suse-tux@gmx.de
+
+- update to svn1599 in order to build virtualbox-ose 1.6.0
+- added kbuild-r1599_KBUILD_SVN_INFO_KMK-fix.diff
+- start the bootstrap with kBuild/env.sh --full because this sets all required
+  variables automagically
+
+-------------------------------------------------------------------
+Mon Apr  7 20:59:27 CEST 2008 - dmueller@suse.de
+
+- fix crash on x86_64
+
+-------------------------------------------------------------------
+Wed Apr  2 09:19:37 CEST 2008 - dmueller@suse.de
+
+- Initial package (0.1.2svn1480)
+
