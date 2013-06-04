@@ -69,6 +69,7 @@ __RCSID("$NetBSD: miscbltin.c,v 1.35 2005/03/19 14:22:50 dsl Exp $");
 #undef rflag
 
 
+extern void* setmode(const char*);
 
 /*
  * The read builtin.
