@@ -1,4 +1,4 @@
-/* $Id: shinstance.h 2498 2011-07-22 12:05:57Z bird $ */
+/* $Id: shinstance.h 2657 2012-09-10 20:57:58Z bird $ */
 /** @file
  * The shell instance and it's methods.
  */
@@ -38,7 +38,7 @@
 #endif
 #include <errno.h>
 #ifdef _MSC_VER
-# define EWOULDBLOCK    512
+# define EWOULDBLOCK    140
 #endif
 
 #include "shtypes.h"
@@ -444,6 +444,9 @@ int sh_add_child(shinstance *psh, pid_t pid, void *hChild);
 #   define W_STOPCODE(sig)         ((sig) << 8 | _WSTOPPED)
 #else
 #   include <sys/wait.h>
+#   ifdef __HAIKU__
+#       define WCOREDUMP(x) WIFCORED(x)
+#   endif
 #endif
 pid_t sh_fork(shinstance *);
 pid_t sh_waitpid(shinstance *, pid_t, int *, int);
@@ -490,13 +493,15 @@ int sh_tcsetpgrp(shinstance *, int, pid_t);
 int sh_getrlimit(shinstance *, int, shrlimit *);
 int sh_setrlimit(shinstance *, int, const shrlimit *);
 
+/* string.h */
+const char *sh_strerror(shinstance *, int);
 
 #ifdef DEBUG
 # define TRACE2(param)	trace param
 # define TRACE2V(param)	tracev param
 #else
-# define TRACE2(param)
-# define TRACE2V(param)
+# define TRACE2(param)  do { } while (0)
+# define TRACE2V(param) do { } while (0)
 #endif
 
 #endif
