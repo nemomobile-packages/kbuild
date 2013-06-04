@@ -1,4 +1,4 @@
-# $Id: Makefile.kmk 2498 2011-07-22 12:05:57Z bird $
+# $Id: Makefile.kmk 2652 2012-09-09 17:21:48Z bird $
 ## @file
 # Sub-makefile for kash.
 #
@@ -36,14 +36,16 @@ kash_ASTOOL = YASM
 kash_DEFS = lint SHELL SMALL
 kash_DEFS += SH_FORKED_MODE
 kash_DEFS.debug = DEBUG=2
+kash_DEFS.haiku = BSD
 kash_DEFS.linux = BSD
 kash_DEFS.solaris = BSD
 ## @todo bring over PC_SLASHES?
 kash_DEFS.win = \
-	BSD PC_PATH_SEP PC_DRIVE_LETTERS PC_EXE_EXTS YY_NO_UNISTD_H SH_DEAL_WITH_CRLF
+	BSD YY_NO_UNISTD_H \
+	SH_DEAL_WITH_CRLF PC_PATH_SEP PC_DRIVE_LETTERS PC_EXE_EXTS EXEC_HASH_BANG_SCRIPT
 kash_DEFS.os2 = \
-	HAVE_SYS_SIGNAME HAVE_SYSCTL_H HAVE_SETPROGNAME \
-	EXEC_HASH_BANG_SCRIPT PC_OS2_LIBPATHS PC_PATH_SEP PC_DRIVE_LETTERS PC_EXE_EXTS
+	HAVE_SYS_SIGNAME HAVE_SYSCTL_H HAVE_SETPROGNAME PC_OS2_LIBPATHS \
+	SH_DEAL_WITH_CRLF PC_PATH_SEP PC_DRIVE_LETTERS PC_EXE_EXTS EXEC_HASH_BANG_SCRIPT
 kash_DEFS.darwin = \
 	HAVE_SYS_SIGNAME HAVE_SYSCTL_H HAVE_SETPROGNAME
 kash_DEFS.dragonfly = \
@@ -60,6 +62,7 @@ if "$(USER)" == "bird" && "$(KBUILD_TARGET)" != "win"
 kash_CFLAGS += -std=gnu99
 endif
 kash_CFLAGS.win.amd64 = -GS-
+kash_LDFLAGS.win = -DYNAMICBASE:NO
 kash_SOURCES = \
 	main.c \
 	alias.c \
@@ -96,17 +99,20 @@ kash_SOURCES = \
 	shheap.c \
 	shthread.c \
 	shfile.c
+kash_SOURCES.haiku = \
+	sys_signame.c \
+	strlcpy.c
 kash_SOURCES.linux = \
 	sys_signame.c \
 	strlcpy.c
+kash_SOURCES.solaris = \
+	sys_signame.c \
+        strlcpy.c
 kash_SOURCES.win = \
 	sys_signame.c \
 	strlcpy.c \
 	shfork-win.c \
 	shforkA-win.asm
-kash_SOURCES.solaris = \
-	sys_signame.c \
-	strlcpy.c
 
 kash_INTERMEDIATES = \
 	$(kash_0_OUTDIR)/builtins.h \
