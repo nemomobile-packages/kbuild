@@ -308,6 +308,8 @@ eval6(void)
 		return v;
 	} else {
 		error();
+        /* dummy return in order to make the build checks happy (this will never be reached) */
+        return NULL;
 	}
 	/* NOTREACHED */
 }
