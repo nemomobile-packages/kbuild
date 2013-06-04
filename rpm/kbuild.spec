@@ -51,7 +51,11 @@ Authors:
     Knut St. Osmundsen <bird-kbuild-spam@anduin.net>
 
 %prep
-%setup -q -n %{name}-%{version}/%{name}
+# version may contain a +, which breaks the build because of the
+# use of ar -M scripts.
+# So change the buildsubdir to be different from what's in the tarfile
+%setup -q -n %{name} -c
+mv %{name}-%{version}/%{name}/* .
 
 %build
 export CFLAGS="$RPM_OPT_FLAGS"
