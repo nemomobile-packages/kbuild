@@ -1,4 +1,4 @@
-# $Id: Makefile.kmk 2343 2009-04-19 21:44:50Z bird $
+# $Id$
 ## @file
 # kBuild Example no. 1 - Makefile.kmk - The top-level makefile.
 #

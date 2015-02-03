@@ -43,6 +43,9 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #  include <limits.h>
 # endif
 #endif
+#ifdef CONFIG_WITH_COMPILER
+# include "kmk_cc_exec.h"
+#endif
 #include <assert.h> /* bird */
 
 #if defined (CONFIG_WITH_MATH) || defined (CONFIG_WITH_NANOTS) || defined (CONFIG_WITH_FILE_SIZE) /* bird */
@@ -1349,6 +1352,7 @@ func_foreach (char *o, char **argv, const char *funcname UNUSED)
       memcpy (var->value, p, len);
       var->value[len] = '\0';
       var->value_length = len;
+      VARIABLE_CHANGED (var);
 
       variable_expand_string_2 (o, body, body_len, &o);
       o = variable_buffer_output (o, " ", 1);
@@ -1741,7 +1745,8 @@ func_sort (char *o, char **argv, const char *funcname UNUSED)
   wordi = 0;
   while ((p = find_next_token (&t, &len)) != 0)
     {
-      ++t;
+      if (*t != '\0') /* bird: Fixes access beyond end of string and overflowing words array. */
+        ++t;
       p[len] = '\0';
       words[wordi++] = p;
     }
@@ -2033,31 +2038,52 @@ func_evalval (char *o, char **argv, const char *funcname)
       int var_ctx;
       size_t off;
       const struct floc *reading_file_saved = reading_file;
+# ifdef CONFIG_WITH_MAKE_STATS
+      unsigned long long uStartTick = CURRENT_CLOCK_TICK();
+#  ifndef CONFIG_WITH_COMPILER
+      MAKE_STATS_2(v->evalval_count++);
+#  endif
+# endif
 
-      /* Make a copy of the value to the variable buffer since
-         eval_buffer will make changes to its input. */
-
-      off = o - variable_buffer;
-      variable_buffer_output (o, v->value, v->value_length + 1);
-      o = variable_buffer + off;
-
-      /* Eval the value.  Pop the current variable buffer setting so that the
-         eval'd code can use its own without conflicting. (really necessary?)  */
-
-      install_variable_buffer (&buf, &len);
       var_ctx = !strcmp (funcname, "evalvalctx");
       if (var_ctx)
         push_new_variable_scope ();
       if (v->fileinfo.filenm)
         reading_file = &v->fileinfo;
 
-      assert (!o[v->value_length]);
-      eval_buffer (o, o + v->value_length);
+# ifdef CONFIG_WITH_COMPILER
+      /* If this variable has been evaluated more than a few times, it make
+         sense to compile it to speed up the processing. */
+
+      v->evalval_count++;
+      if (   v->evalprog
+          || (v->evalval_count == 3 && kmk_cc_compile_variable_for_eval (v)))
+        {
+          install_variable_buffer (&buf, &len); /* Really necessary? */
+          kmk_exec_evalval (v);
+          restore_variable_buffer (buf, len);
+        }
+      else
+# endif
+      {
+        /* Make a copy of the value to the variable buffer first since
+           eval_buffer will make changes to its input. */
+
+        off = o - variable_buffer;
+        variable_buffer_output (o, v->value, v->value_length + 1);
+        o = variable_buffer + off;
+        assert (!o[v->value_length]);
+
+        install_variable_buffer (&buf, &len); /* Really necessary? */
+        eval_buffer (o, o + v->value_length);
+        restore_variable_buffer (buf, len);
+      }
 
       reading_file = reading_file_saved;
       if (var_ctx)
         pop_variable_scope ();
-      restore_variable_buffer (buf, len);
+
+      MAKE_STATS_2(v->cTicksEvalVal += CURRENT_CLOCK_TICK() - uStartTick);
     }
 
   return o;
@@ -2126,6 +2152,17 @@ func_eval_optimize_variable (char *o, char **argv, const char *funcname)
               *dst = '\0';
               v->value_length = dst - v->value;
             }
+
+          VARIABLE_CHANGED (v);
+
+# ifdef CONFIG_WITH_COMPILER
+          /* Compile the variable for evalval, evalctx and expansion. */
+
+          if (   v->recursive
+              && !IS_VARIABLE_RECURSIVE_WITHOUT_DOLLAR (v))
+                kmk_cc_compile_variable_for_expand (v);
+          kmk_cc_compile_variable_for_eval (v);
+# endif
         }
       else if (v)
         error (NILF, _("$(%s ): variable `%s' is of the wrong type\n"), funcname, v->name);
@@ -2854,37 +2891,50 @@ func_substr (char *o, char **argv, const char *funcname UNUSED)
             }
         }
       length = math_int_from_string (argv[2]);
-      if (length < 0 || (pad != NULL && length > 16*1024*1024 /* 16MB */))
-        fatal (NILF, _("$(substr ): length=%s is out of bounds\n"), argv[3]);
+      if (pad != NULL && length > 16*1024*1024 /* 16MB */)
+        fatal (NILF, _("$(substr ): length=%s is out of bounds\n"), argv[2]);
+      if (pad != NULL && length < 0)
+        fatal (NILF, _("$(substr ): negative length (%s) and padding doesn't mix.\n"), argv[2]);
       if (length == 0)
         return o;
     }
 
-  /* adjust start and length. */
+  /* Note that negative start is and length are used for referencing from the
+     end of the string. */
   if (pad == NULL)
     {
       if (start > 0)
-        {
-          start--;      /* one-origin */
-          if (start >= str_len)
-            return o;
-          if (length == 0 || start + length > str_len)
-            length = str_len - start;
-        }
+        start--;      /* one-origin */
       else
         {
           start = str_len + start;
           if (start <= 0)
             {
+              if (length < 0)
+                return o;
               start += length;
               if (start <= 0)
                 return o;
               length = start;
               start = 0;
             }
-          else if (length == 0 || start + length > str_len)
-            length = str_len - start;
         }
+
+      if (start >= str_len)
+        return o;
+      if (length == 0)
+        length = str_len - start;
+      else if (length < 0)
+        {
+          if (str_len <= -length)
+            return o;
+          length += str_len;
+          if (length <= start)
+            return o;
+          length -= start;
+        }
+      else if (start + length > str_len)
+        length = str_len - start;
 
       o = variable_buffer_output (o, str + start, length);
     }
@@ -4054,7 +4104,8 @@ func_comp_vars (char *o, char **argv, const char *funcname)
     return variable_buffer_output (o, argv[2], strlen(argv[2]));
   if (var1->value == var2->value)
     return variable_buffer_output (o, "", 0);       /* eq */
-  if (!var1->recursive && !var2->recursive)
+  if (   (!var1->recursive || IS_VARIABLE_RECURSIVE_WITHOUT_DOLLAR (var1))
+      && (!var2->recursive || IS_VARIABLE_RECURSIVE_WITHOUT_DOLLAR (var2)) )
   {
     if (    var1->value_length == var2->value_length
         &&  !memcmp (var1->value, var2->value, var1->value_length))
@@ -4407,18 +4458,18 @@ func_which (char *o, char **argv, const char *funcname UNUSED)
                 {
                   const char *src = comp;
                   const char *end = strchr (comp, PATH_SEPARATOR_CHAR);
-                  size_t comp_len = end ? (size_t)(end - comp) : strlen (comp);
-                  if (!comp_len)
+                  size_t src_len = end ? (size_t)(end - comp) : strlen (comp);
+                  if (!src_len)
                     {
-                      comp_len = 1;
+                      src_len = 1;
                       src = ".";
                     }
-                  if (len + comp_len + 2 + 4 < GET_PATH_MAX) /* +4 for .exe */
+                  if (len + src_len + 2 + 4 < GET_PATH_MAX) /* +4 for .exe */
                     {
-                      memcpy (buf, comp, comp_len);
-                      buf [comp_len] = '/';
-                      memcpy (&buf[comp_len + 1], cur, len);
-                      buf[comp_len + 1 + len] = '\0';
+                      memcpy (buf, src, src_len);
+                      buf [src_len] = '/';
+                      memcpy (&buf[src_len + 1], cur, len);
+                      buf[src_len + 1 + len] = '\0';
 
                       if (func_which_test_x (buf))
                         {
@@ -4584,6 +4635,7 @@ func_stack_pop_top (char *o, char **argv, const char *funcname)
 #ifdef CONFIG_WITH_VALUE_LENGTH
               stack_var->value_length = lastitem - stack_var->value;
 #endif
+              VARIABLE_CHANGED (stack_var);
             }
         }
     }
@@ -5742,6 +5794,24 @@ handle_function (char **op, const char **stringp, const char *nameend, const cha
   return handle_function2 (entry_p, op, stringp);
 }
 #endif /* CONFIG_WITH_VALUE_LENGTH */
+
+#ifdef CONFIG_WITH_COMPILER
+/* Used by the "compiler" to get all info about potential functions. */
+make_function_ptr_t
+lookup_function_for_compiler (const char *name, unsigned int len,
+                              unsigned char *minargsp, unsigned char *maxargsp,
+                              char *expargsp, const char **funcnamep)
+{
+  const struct function_table_entry *entry_p = lookup_function (name, len);
+  if (!entry_p)
+    return 0;
+  *minargsp  = entry_p->minimum_args;
+  *maxargsp  = entry_p->maximum_args;
+  *expargsp  = entry_p->expand_args;
+  *funcnamep = entry_p->name;
+  return entry_p->func_ptr;
+}
+#endif /* CONFIG_WITH_COMPILER */
 
 
 /* User-defined functions.  Expand the first argument as either a builtin
@@ -5916,7 +5986,7 @@ func_call (char *o, char **argv, const char *funcname UNUSED)
                                   current_variable_set_list->set);
       if (v && v->value_length)
         {
-          if (v->recursive)
+          if (v->recursive && !IS_VARIABLE_RECURSIVE_WITHOUT_DOLLAR (v))
             {
               v->exp_count = EXP_COUNT_MAX;
               variable_expand_string_2 (o, v->value, v->value_length, &o);

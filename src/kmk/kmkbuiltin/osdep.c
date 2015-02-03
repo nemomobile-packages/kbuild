@@ -1,4 +1,4 @@
-/* $Id: osdep.c 2656 2012-09-10 20:39:16Z bird $ */
+/* $Id$ */
 /** @file
  * Include all the OS dependent bits when bootstrapping.
  */

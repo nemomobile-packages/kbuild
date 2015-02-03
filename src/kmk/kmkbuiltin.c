@@ -1,4 +1,4 @@
-/* $Id: kmkbuiltin.c 2591 2012-06-17 20:45:31Z bird $ */
+/* $Id$ */
 /** @file
  * kMk Builtin command execution.
  */

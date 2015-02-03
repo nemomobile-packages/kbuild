@@ -1,4 +1,4 @@
-# $Id: LIBSDL.kmk 2566 2012-03-02 12:58:25Z bird $
+# $Id$
 ## @file
 # kBuild SDK - Simple DirectMedia Layer, targeting $(KBUILD_TARGET).
 #

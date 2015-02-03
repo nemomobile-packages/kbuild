@@ -1,4 +1,4 @@
-# $Id: LLVMGCC42MACHO.kmk 2547 2011-11-04 21:58:53Z bird $
+# $Id$
 ## @file
 # kBuild Tool Config - LLVM GCC v4.2.x targeting Darwin (Mac OS X) Mach-O.
 #

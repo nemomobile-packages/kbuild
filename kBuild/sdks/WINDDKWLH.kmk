@@ -1,4 +1,4 @@
-# $Id: WINDDKWLH.kmk 2413 2010-09-11 17:43:04Z bird $
+# $Id$
 ## @file
 # kBuild SDK - The Microsoft Windows Vista and Server 2008 DDKs, Targeting Vista and 2008 (KBUILD_TARGET_ARCH).
 #

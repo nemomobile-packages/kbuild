@@ -1,4 +1,4 @@
-/* $Id: hellolib.c 2343 2009-04-19 21:44:50Z bird $ */
+/* $Id$ */
 /** @file
  * Example no. 1 - hellolib.c - Hello world program w/ lib.
  */

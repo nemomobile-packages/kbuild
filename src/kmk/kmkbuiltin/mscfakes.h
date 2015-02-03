@@ -1,4 +1,4 @@
-/* $Id: mscfakes.h 2592 2012-06-17 22:50:38Z bird $ */
+/* $Id$ */
 /** @file
  * Unix fakes for MSC.
  */
@@ -27,54 +27,28 @@
 #define ___mscfakes_h
 #ifdef _MSC_VER
 
+/* Include the config file (kmk's) so we don't need to duplicate stuff from it here. */
+#include "config.h"
+
 #include <io.h>
 #include <direct.h>
 #include <time.h>
 #include <stdarg.h>
 #include <malloc.h>
 #include "getopt.h"
+#ifndef MSCFAKES_NO_WINDOWS_H
+# include <Windows.h>
+#endif
 
-/* Note: Duplicated it config.h.win */
 #include <sys/stat.h>
 #include <io.h>
 #include <direct.h>
+#include "nt/ntstat.h"
+#include "nt/ntunlink.h"
 #if defined(MSC_DO_64_BIT_IO) && _MSC_VER >= 1400 /* We want 64-bit file lengths here when possible. */
 # define off_t __int64
-# undef stat
-# define stat  _stat64
-# define fstat _fstat64
 # define lseek _lseeki64
-#else
-# ifndef STAT_REDEFINED_ALREADY
-#  define STAT_REDEFINED_ALREADY
-#  undef stat
-#  define stat(_path, _st) bird_w32_stat(_path, _st)
-extern int bird_w32_stat(const char *, struct stat *);
-# endif
 #endif
-
-#ifndef S_ISDIR
-# define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
-#endif
-#ifndef S_ISREG
-# define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
-#endif
-#define S_ISLNK(m)  0
-#define	S_IRWXU (_S_IREAD | _S_IWRITE | _S_IEXEC)
-#define	S_IXUSR _S_IEXEC
-#define	S_IWUSR _S_IWRITE
-#define	S_IRUSR _S_IREAD
-#define S_IRWXG 0000070
-#define S_IRGRP	0000040
-#define S_IWGRP	0000020
-#define S_IXGRP 0000010
-#define S_IRWXO 0000007
-#define S_IROTH	0000004
-#define S_IWOTH	0000002
-#define S_IXOTH 0000001
-#define	S_ISUID 0004000
-#define	S_ISGID 0002000
-#define ALLPERMS 0000777
 
 #undef  PATH_MAX
 #define PATH_MAX   _MAX_PATH
@@ -109,12 +83,27 @@ typedef unsigned short nlink_t;
 typedef unsigned short uid_t;
 typedef unsigned short gid_t;
 #endif
+#if defined(_M_AMD64) || defined(_M_X64) || defined(_M_IA64) || defined(_WIN64)
+typedef __int64 ssize_t;
+#else
 typedef long ssize_t;
+#endif
 typedef unsigned long u_long;
 typedef unsigned int u_int;
 typedef unsigned short u_short;
 
-#ifndef timerisset
+#if _MSC_VER >= 1600
+# include <stdint.h>
+#else
+typedef unsigned char  uint8_t;
+typedef unsigned short uint16_t;
+typedef unsigned int   uint32_t;
+typedef signed char    int8_t;
+typedef signed short   int16_t;
+typedef signed int     int32_t;
+#endif
+
+#if !defined(timerisset) && defined(MSCFAKES_NO_WINDOWS_H)
 struct timeval
 {
     long tv_sec;
@@ -140,7 +129,6 @@ char *dirname(char *path);
 #define fchmod(fd, mode) 0              /** @todo implement fchmod! */
 #define geteuid()  0
 #define getegid()  0
-#define lstat(path, s) stat(path, s)
 int lchmod(const char *path, mode_t mode);
 int msc_chmod(const char *path, mode_t mode);
 #define chmod msc_chmod
@@ -169,7 +157,17 @@ int snprintf(char *buf, size_t size, const char *fmt, ...);
 #endif
 int symlink(const char *pszDst, const char *pszLink);
 int utimes(const char *pszPath, const struct timeval *paTimes);
-int writev(int fd, const struct iovec *vector, int count);
+ssize_t writev(int fd, const struct iovec *vector, int count);
+
+/* bird write ENOSPC hacks. */
+#undef write
+#define write msc_write
+ssize_t msc_write(int fd, const void *pvSrc, size_t cbSrc);
+
+/*
+ * MSC fake internals / helpers.
+ */
+int birdSetErrno(unsigned dwErr);
 
 #endif /* _MSC_VER */
 #endif

@@ -1,4 +1,4 @@
-# $Id: WINDDK71.kmk 2602 2012-07-12 20:21:45Z bird $
+# $Id$
 ## @file
 # kBuild SDK - The Microsoft Windows 7 DDK, v7.1.
 #              Defaults to $(KBUILD_TARGET_ARCH). Base SDK.

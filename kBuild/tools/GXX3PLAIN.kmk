@@ -1,4 +1,4 @@
-# $Id: GXX3PLAIN.kmk 2545 2011-09-13 19:09:05Z bird $
+# $Id$
 ## @file
 # kBuild Tool Config - Generic GCC v3.2.x or later using the system GCC, any Unix linker and Unix archiver to build C++ code.
 #

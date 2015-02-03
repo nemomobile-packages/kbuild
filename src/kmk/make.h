@@ -213,7 +213,7 @@ extern unsigned long make_stats_ht_collisions;
 
 # ifdef __APPLE__
 #  include <malloc/malloc.h>
-#  define SIZE_OF_HEAP_BLOCK(ptr)   malloc_good_size(ptr)
+#  define SIZE_OF_HEAP_BLOCK(ptr)   malloc_size(ptr)
 
 # elif defined(__linux__) /* glibc */
 #  include <malloc.h>
@@ -237,6 +237,13 @@ extern unsigned long make_stats_ht_collisions;
 #endif
 
 /* bird - start */
+#ifdef _MSC_VER
+# include <intrin.h>
+# define CURRENT_CLOCK_TICK() __rdtsc()
+#else
+# define CURRENT_CLOCK_TICK() 0
+#endif
+
 #define COMMA ,
 #ifdef CONFIG_WITH_VALUE_LENGTH
 # define IF_WITH_VALUE_LENGTH(a_Expr)           a_Expr

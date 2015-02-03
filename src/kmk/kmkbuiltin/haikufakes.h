@@ -1,4 +1,4 @@
-/* $Id: haikufakes.h 2656 2012-09-10 20:39:16Z bird $ */
+/* $Id$ */
 /** @file
  * Unix/BSD fakes for Haiku.
  */

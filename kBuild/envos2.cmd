@@ -2,7 +2,7 @@
 echo this is a rexx script!
 cancel & quit & exit
 */
-/* $Id: envos2.cmd 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * Environment setup script for OS/2.
  */

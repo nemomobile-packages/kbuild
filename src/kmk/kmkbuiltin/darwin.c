@@ -1,4 +1,4 @@
-/* $Id: darwin.c 2591 2012-06-17 20:45:31Z bird $ */
+/* $Id$ */
 /** @file
  * Missing BSD functions on Darwin / Mac OS X.
  */

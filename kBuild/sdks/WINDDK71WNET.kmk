@@ -1,4 +1,4 @@
-# $Id: WINDDK71WNET.kmk 2602 2012-07-12 20:21:45Z bird $
+# $Id$
 ## @file
 # kBuild SDK - The Microsoft Windows 7 DDKs, v7.1, Targeting Windows Server 2003 (KBUILD_TARGET_ARCH).
 #

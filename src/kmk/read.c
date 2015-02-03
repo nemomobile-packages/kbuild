@@ -955,21 +955,17 @@ eval (struct ebuffer *ebuf, int set_default)
 
 #ifdef KMK
       /* Check for the kBuild language extensions. */
-      if (   wlen >= sizeof("kBuild-define") - 1
-          && strneq (p, "kBuild-define", sizeof("kBuild-define") - 1))
-        krc = eval_kbuild_define (&kdata, fstart, p, wlen, p2, eol, ignoring);
-      else if (   wlen >= sizeof("kBuild-endef") - 1
-               && strneq (p, "kBuild-endef", sizeof("kBuild-endef") - 1))
-        krc = eval_kbuild_endef (&kdata, fstart, p, wlen, p2, eol, ignoring);
-      else
-        krc = 42;
-      if (krc != 42)
+      if (   wlen > sizeof("kBuild-")
+          && strneq (p, "kBuild-", sizeof("kBuild-") - 1))
         {
-          if (krc != 0)
-            error (fstart, _("krc=%d"), krc);
-          continue;
+          krc = eval_kbuild_read_hook (&kdata, fstart, p, wlen, p2, eol, ignoring);
+          if (krc != 42)
+            {
+              if (krc != 0)
+                error (fstart, _("krc=%d"), krc);
+              continue;
+            }
         }
-
 #endif /* KMK */
 
       /* Manage the "export" keyword used outside of variable assignment
@@ -1845,7 +1841,14 @@ do_define (char *name IF_WITH_VALUE_LENGTH_PARAM(char *eos),
   else
     definition[idx - 1] = '\0';
 
+#ifndef CONFIG_WITH_VALUE_LENGTH
   v = do_variable_definition (&defstart, name, definition, origin, flavor, 0);
+#else
+  v = do_variable_definition_2 (&defstart, name, definition,
+                                idx ? idx - 1 : idx,  flavor == f_simple,
+                                0 /* free_value */, origin, flavor,
+                                0 /*target_var*/);
+#endif
   free (definition);
   free (var);
   return (v);
@@ -2284,10 +2287,19 @@ record_target_var (struct nameseq *filenames, char *defn,
           assert (v != 0);
 
           v->origin = origin;
+#ifndef CONFIG_WITH_VALUE_LENGTH
           if (v->flavor == f_simple)
             v->value = allocated_variable_expand (v->value);
           else
             v->value = xstrdup (v->value);
+#else
+          v->value_length = strlen (v->value);
+          if (v->flavor == f_simple)
+            v->value = allocated_variable_expand_2 (v->value, v->value_length, &v->value_length);
+          else
+            v->value = (char *)memcpy (xmalloc (v->value_length + 1), v->value, v->value_length + 1);
+          v->value_alloc_len = v->value_length + 1;
+#endif
 
           fname = p->target;
         }
@@ -2358,6 +2370,7 @@ record_target_var (struct nameseq *filenames, char *defn,
               v->origin = gv->origin;
               v->recursive = gv->recursive;
               v->append = 0;
+              VARIABLE_CHANGED (v);
             }
         }
     }

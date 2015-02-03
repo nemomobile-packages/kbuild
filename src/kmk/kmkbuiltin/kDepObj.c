@@ -1,4 +1,4 @@
-/* $Id: kDepObj.c 2591 2012-06-17 20:45:31Z bird $ */
+/* $Id$ */
 /** @file
  * kDepObj - Extract dependency information from an object file.
  */
@@ -26,6 +26,7 @@
 /*******************************************************************************
 *   Header Files                                                               *
 *******************************************************************************/
+#define MSCFAKES_NO_WINDOWS_H
 #include "config.h"
 #include <stdio.h>
 #include <stdlib.h>

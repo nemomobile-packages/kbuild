@@ -1,4 +1,4 @@
-/* $Id: shinstance.h 2657 2012-09-10 20:57:58Z bird $ */
+/* $Id$ */
 /** @file
  * The shell instance and it's methods.
  */

@@ -1,4 +1,4 @@
-/* $Id: openbsd.c 2421 2010-10-17 21:27:53Z bird $ */
+/* $Id$ */
 /** @file
  * Missing BSD functions in OpenBSD.
  */

@@ -1,4 +1,4 @@
-/* $Id: shtypes.h 2546 2011-10-01 19:49:54Z bird $ */
+/* $Id$ */
 /** @file
  * Wrapper for missing types and such.
  */

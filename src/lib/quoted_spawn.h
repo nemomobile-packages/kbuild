@@ -1,4 +1,4 @@
-/* $Id: quoted_spawn.h 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * quote_spawn - Correctly Quote The _spawnvp arguments, windows specific.
  */

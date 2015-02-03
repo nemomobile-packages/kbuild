@@ -1,5 +1,5 @@
 #ifdef CONFIG_WITH_IF_CONDITIONALS
-/* $Id: expreval.c 2573 2012-05-13 19:39:47Z bird $ */
+/* $Id$ */
 /** @file
  * expreval - Expressions evaluator, C / BSD make / nmake style.
  */

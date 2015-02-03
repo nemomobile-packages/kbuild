@@ -1,4 +1,4 @@
-/* $Id: kkeys.e 2558 2012-02-13 12:36:03Z bird $ */
+/* $Id$ */
 /** @file
  * Bird's key additions to Visual Slickedit.
  */
