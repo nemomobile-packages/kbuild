@@ -1,2 +1,5 @@
+* Fri Feb 13 2014  Fabio Isgro <fabio.isgro@messinalug.org> - 0.1.9998svn2720
+- Updated in order to compile 4.3.x version of VirtuaBox
+
 * Thu Oct 04 2012  David Greaves <david@dgreaves.com> - 0.1.9998svn2543
 - Packaged for Mer/Nemo as a build dependency for VirtualBox

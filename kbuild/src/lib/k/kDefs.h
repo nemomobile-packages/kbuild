@@ -196,6 +196,8 @@
 #  define K_ARCH    K_ARCH_MIPS_32
 # elif defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__)
 #  define K_ARCH    K_ARCH_POWERPC_64
+# elif defined(__powerpc64le__) || defined(__ppc64le__) || defined(__PPC64LE__)
+#  define K_ARCH    K_ARCH_POWERPC_64LE
 # elif defined(__powerpc__) || defined(__ppc__) || defined(__PPC__)
 #  define K_ARCH    K_ARCH_POWERPC_32
 # elif defined(__sparcv9__) || defined(__sparcv9)

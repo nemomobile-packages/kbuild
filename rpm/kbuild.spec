@@ -21,15 +21,17 @@ BuildRequires:  automake
 BuildRequires:  bison
 BuildRequires:  flex
 BuildRequires:  libacl-devel
-BuildRequires:  gettext-devel
+BuildRequires:  gettext
 BuildRequires:  byacc
 Summary:        Framework for writing simple makefiles for complex tasks
 License:        GPL-2.0+
 Group:          Development/Tools/Building
-Version:        0.1.9998svn2543
-Release:        0
-%define _svnrev 2543
+Version:        0.1.9998svn2720
+Release:        1
+%define _svnrev 2720
 Source0:        %{name}-%{version}.tar.bz2
+ # PATCH-FIX-UPSTREAM speilicke@suse.com: Import local implementation if KMK
+# PATCH-FIX-UPSTREAM speilicke@suse.com: Fix filelist
 # Keep the suse changelog for history
 Source99:	kbuild.changes_suse
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build

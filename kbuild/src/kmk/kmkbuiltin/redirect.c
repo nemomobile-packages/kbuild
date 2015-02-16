@@ -1,4 +1,4 @@
-/* $Id: redirect.c 2667 2012-11-25 19:52:26Z bird $ */
+/* $Id: redirect.c 2699 2013-09-20 00:33:20Z bird $ */
 /** @file
  * kmk_redirect - Do simple program <-> file redirection (++).
  */
@@ -136,6 +136,32 @@ static void quoteArguments(int argc, char **argv)
     /*for (i = 0; i < argc; i++) printf("argv[%u]=%s;;\n", i, argv[i]); */
 }
 #endif /* _MSC_VER */
+
+
+#ifdef _MSC_VER
+/** Used by safeCloseFd. */
+static void __cdecl ignore_invalid_parameter(const wchar_t *a, const wchar_t *b, const wchar_t *c, unsigned d, uintptr_t e)
+{
+}
+#endif
+
+
+/**
+ * Safely works around MS CRT's pedantic close() function.
+ *
+ * @param   fd      The file handle.
+ */
+static void safeCloseFd(int fd)
+{
+#ifdef _MSC_VER
+    _invalid_parameter_handler pfnOld = _get_invalid_parameter_handler();
+    _set_invalid_parameter_handler(ignore_invalid_parameter);
+    close(fd);
+    _set_invalid_parameter_handler(pfnOld);
+#else
+    close(fd);
+#endif
+}
 
 
 static const char *name(const char *pszName)
@@ -284,10 +310,40 @@ int main(int argc, char **argv, char **envp)
                 }
                 else
 #endif /* __OS2__ */
-                if (putenv(psz))
                 {
-                    fprintf(pStdErr, "%s: error: putenv(\"%s\"): %s\n", name(argv[0]), psz, strerror(errno));
-                    return 1;
+                    const char *pchEqual = strchr(psz, '=');
+                    if (pchEqual && pchEqual[1] != '\0')
+                    {
+                        if (putenv(psz))
+                        {
+                            fprintf(pStdErr, "%s: error: putenv(\"%s\"): %s\n", name(argv[0]), psz, strerror(errno));
+                            return 1;
+                        }
+                    }
+                    else
+                    {
+                        size_t cchVar = pchEqual ? (size_t)(pchEqual - psz) : strlen(psz);
+                        char *pszCopy = (char *)malloc(cchVar + 2);
+                        memcpy(pszCopy, psz, cchVar);
+
+#if defined(_MSC_VER) || defined(__OS2__)
+                        pszCopy[cchVar] = '=';
+                        pszCopy[cchVar + 1] = '\0';
+                        if (putenv(pszCopy))
+                        {
+                            fprintf(pStdErr, "%s: error: putenv(\"%s\"): %s\n", name(argv[0]), pszCopy, strerror(errno));
+                            return 1;
+                        }
+#else
+                        pszCopy[cchVar] = '\0';
+                        if (unsetenv(pszCopy))
+                        {
+                            fprintf(pStdErr, "%s: error: unsetenv(\"%s\"): %s\n", name(argv[0]), pszCopy, strerror(errno));
+                            return 1;
+                        }
+#endif
+                        free(pszCopy);
+                    }
                 }
                 continue;
             }
@@ -396,7 +452,7 @@ int main(int argc, char **argv, char **envp)
                     return 1;
                 }
                 /** @todo deal with stderr */
-                close(fd);
+                safeCloseFd(fd);
                 continue;
             }
 
@@ -601,7 +657,7 @@ int main(int argc, char **argv, char **envp)
             /*
              * Close and open the new file descriptor.
              */
-            close(fd);
+            safeCloseFd(fd);
 #if defined(_MSC_VER)
             if (!strcmp(psz, "/dev/null"))
                 psz = (char *)"nul";

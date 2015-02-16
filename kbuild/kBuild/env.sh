@@ -347,6 +347,9 @@ if test -z "$KBUILD_HOST_ARCH"; then
         ppc64|powerpc64)
             KBUILD_HOST_ARCH='ppc64'
             ;;
+        ppc64le|powerpc64le)
+            KBUILD_HOST_ARCH='ppc64le'
+            ;;
         mips32|mips)
             KBUILD_HOST_ARCH='mips32'
             ;;

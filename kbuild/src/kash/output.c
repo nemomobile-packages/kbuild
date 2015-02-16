@@ -226,7 +226,6 @@ out1fmt(shinstance *psh, const char *fmt, ...)
 	va_end(ap);
 }
 
-#if 0
 void
 dprintf(shinstance *psh, const char *fmt, ...)
 {
@@ -237,7 +236,6 @@ dprintf(shinstance *psh, const char *fmt, ...)
 	va_end(ap);
 	flushout(psh->out2);
 }
-#endif
 
 void
 fmtstr(char *outbuf, size_t length, const char *fmt, ...)

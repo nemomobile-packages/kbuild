@@ -1,4 +1,4 @@
-/* $Id: kdev.e 2683 2013-05-13 02:50:54Z bird $  -*- tab-width: 4 c-indent-level: 4 -*- */
+/* $Id: kdev.e 2701 2013-11-06 19:58:56Z bird $  -*- tab-width: 4 c-indent-level: 4 -*- */
 /** @file
  * Visual SlickEdit Documentation Macros.
  */
@@ -58,7 +58,8 @@
  */
 defeventtab default_keys
 def  'C-S-A' = k_signature
-def  'C-S-C' = k_javadoc_classbox
+//def  'C-S-C' = k_javadoc_classbox
+def  'C-S-C' = k_calc
 def  'C-S-E' = k_box_exported
 def  'C-S-F' = k_javadoc_funcbox
 def  'C-S-G' = k_box_globals
@@ -87,6 +88,10 @@ def  'C-S-L' = k_style_load
 #include 'tagsdb.sh'
 //#pragma option(strict,on)
 /*#else: Version 4.0 (OS/2) */
+#endif
+
+#ifndef __MACOSX__
+ #define KDEV_WITH_MENU
 #endif
 
 /* Remeber to change these! */
@@ -2945,11 +2950,48 @@ _str _buffer_save_kdev(int buf_id)
 }
 
 
+/**
+ * Command similar to the add() command in math.e, only this
+ * produces hex and doesn't do the multi line stuff.
+ */
+_command int k_calc()
+{
+    _str sLine;
+    filter_init();
+    typeless rc = filter_get_string(sLine);
+    if (rc == 0)
+    {
+        _str sResultHex;
+        rc = eval_exp(sResultHex, sLine, 16);
+        if (rc == 0)
+        {
+            _str sResultDec;
+            rc = eval_exp(sResultDec, sLine, 10);
+            if (rc == 0)
+            {
+                _end_select();
+                _insert_text(' = ' :+ sResultHex :+ ' (' :+ sResultDec :+ ')');
+                return 0;
+            }
+        }
+    }
+
+    if (isinteger(rc))
+        message(get_message(rc));
+    else
+        message(rc);
+    return 1;
+}
+
+
 
 /*******************************************************************************
 *   Menu and Menu commands                                                     *
 *******************************************************************************/
+#ifdef KDEV_WITH_MENU
+#if __VERSION__ < 18.0 /* Something with timers are busted, so excusing my code. */
 static int  iTimer = 0;
+#endif
 static int  mhkDev = 0;
 static int  mhCode = 0;
 static int  mhDoc = 0;
@@ -2961,8 +3003,10 @@ static int  mhPre = 0;
  */
 static k_menu_create()
 {
+# if __VERSION__ < 18.0 /* Something with timers are busted, so excusing my code. */
     if (arg(1) == 'timer')
         _kill_timer(iTimer);
+# endif
     menu_handle = _mdi.p_menu_handle;
     menu_index  = find_index(_cur_mdi_menu,oi2type(OI_MENU));
 
@@ -3222,6 +3266,9 @@ _command k_menu_settings()
     mySettings();
 }
 */
+
+
+#endif /* KDEV_WITH_MENU */
 
 
 /*******************************************************************************
@@ -3544,8 +3591,14 @@ _command void kdev_load_settings()
             }
             idxExt = name_match('def-lang-for-ext-', 0, MISC_TYPE);
         }
-        replace_def_data('def-encoding-' :+ sLangId, '+futf8 ');
+        //replace_def_data('def-encoding-' :+ sLangId, '+futf8 ');
+        idxLangEncoding = find_index('def-encoding-' :+ sLangId, MISC_TYPE);
+        if (idxLangEncoding != 0)
+            delete_name(idxLangEncoding);
+
     }
+    replace_def_data('def-encoding', '+futf8 ');
+
     LanguageSettings.setIndentWithTabs('mak', true);
     LanguageSettings.setLexerName('mak', 'kmk');
     LanguageSettings.setSyntaxIndent('mak', 8);
@@ -3624,8 +3677,12 @@ definit()
 
     /* do init */
     k_styles_create();
+#ifdef KDEV_WITH_MENU
     k_menu_create();
+# if __VERSION__ < 18.0 /* Something with timers are busted, so excusing my code. */
     iTimer = _set_timer(1000, k_menu_create, "timer");
+# endif
     /* createMyColorSchemeAndUseIt();*/
+#endif
 }
 
