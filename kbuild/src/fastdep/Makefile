@@ -1,4 +1,4 @@
-# $Id: Makefile 2413 2010-09-11 17:43:04Z bird $
+# $Id$
 
 #
 # Odin32 API

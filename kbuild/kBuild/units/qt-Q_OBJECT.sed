@@ -1,4 +1,4 @@
-# $Id: qt-Q_OBJECT.sed 2413 2010-09-11 17:43:04Z bird $
+# $Id$
 ## @file
 # Qt unit - sed script for checking for Q_OBJECT in a file.
 #

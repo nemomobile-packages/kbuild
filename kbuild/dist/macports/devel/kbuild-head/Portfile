@@ -1,4 +1,4 @@
-# $Id: Portfile 2413 2010-09-11 17:43:04Z bird $
+# $Id$
 # Very crude atm, everything is exec'ed.
 
 PortSystem 1.0

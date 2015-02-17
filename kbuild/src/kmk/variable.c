@@ -1,7 +1,7 @@
 /* Internals of variables for GNU Make.
 Copyright (C) 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997,
-1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007 Free Software
-Foundation, Inc.
+1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
+2010 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -41,32 +41,83 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #ifdef CONFIG_WITH_STRCACHE2
 # include <stddef.h>
 #endif
+#ifdef CONFIG_WITH_COMPILER
+# include "kmk_cc_exec.h"
+#endif
+
+#ifdef KMK
+/** Gets the real variable if alias.  For use when looking up variables. */
+# define RESOLVE_ALIAS_VARIABLE(v) \
+  do { \
+    if ((v) != NULL && (v)->alias) \
+      { \
+        (v) = (struct variable *)(v)->value; \
+        assert ((v)->aliased); \
+        assert (!(v)->alias); \
+      } \
+  } while (0)
+#endif
+
 
 /* Chain of all pattern-specific variables.  */
 
 static struct pattern_var *pattern_vars;
 
-/* Pointer to last struct in the chain, so we can add onto the end.  */
+/* Pointer to the last struct in the pack of a specific size, from 1 to 255.*/
 
-static struct pattern_var *last_pattern_var;
+static struct pattern_var *last_pattern_vars[256];
 
-/* Create a new pattern-specific variable struct.  */
+/* Create a new pattern-specific variable struct. The new variable is
+   inserted into the PATTERN_VARS list in the shortest patterns first
+   order to support the shortest stem matching (the variables are
+   matched in the reverse order so the ones with the longest pattern
+   will be considered first). Variables with the same pattern length
+   are inserted in the definition order. */
 
 struct pattern_var *
 create_pattern_var (const char *target, const char *suffix)
 {
+  register unsigned int len = strlen (target);
   register struct pattern_var *p = xmalloc (sizeof (struct pattern_var));
 
-  if (last_pattern_var != 0)
-    last_pattern_var->next = p;
+  if (pattern_vars != 0)
+    {
+      if (len < 256 && last_pattern_vars[len] != 0)
+        {
+          p->next = last_pattern_vars[len]->next;
+          last_pattern_vars[len]->next = p;
+        }
+      else
+        {
+          /* Find the position where we can insert this variable. */
+          register struct pattern_var **v;
+
+          for (v = &pattern_vars; ; v = &(*v)->next)
+            {
+              /* Insert at the end of the pack so that patterns with the
+                 same length appear in the order they were defined .*/
+
+              if (*v == 0 || (*v)->len > len)
+                {
+                  p->next = *v;
+                  *v = p;
+                  break;
+                }
+            }
+        }
+    }
   else
-    pattern_vars = p;
-  last_pattern_var = p;
-  p->next = 0;
+    {
+      pattern_vars = p;
+      p->next = 0;
+    }
 
   p->target = target;
-  p->len = strlen (target);
+  p->len = len;
   p->suffix = suffix + 1;
+
+  if (len < 256)
+    last_pattern_vars[len] = p;
 
   return p;
 }
@@ -166,9 +217,15 @@ variable_hash_cmp (const void *xv, const void *yv)
 # endif
 #endif
 
+
+#ifdef KMK /* Drop the 'static' */
+struct variable_set global_variable_set;
+struct variable_set_list global_setlist
+#else
 static struct variable_set global_variable_set;
 static struct variable_set_list global_setlist
-  = { 0, &global_variable_set };
+#endif
+  = { 0, &global_variable_set, 0 };
 struct variable_set_list *current_variable_set_list = &global_setlist;
 
 /* Implement variables.  */
@@ -212,24 +269,48 @@ define_variable_in_set (const char *name, unsigned int length,
   struct variable **var_slot;
   struct variable var_key;
 
+  if (env_overrides && origin == o_env)
+    origin = o_env_override;
+
+#ifndef KMK
   if (set == NULL)
     set = &global_variable_set;
+#else /* KMK */
+  /* Intercept kBuild object variable definitions. */
+  if (name[0] == '[' && length > 3)
+    {
+      v = try_define_kbuild_object_variable_via_accessor (name, length,
+                                                          value, value_len, duplicate_value,
+                                                          origin, recursive, flocp);
+      if (v != VAR_NOT_KBUILD_ACCESSOR)
+        return v;
+    }
+  if (set == NULL)
+    {
+      if (g_pTopKbEvalData)
+        return define_kbuild_object_variable_in_top_obj (name, length,
+                                                         value, value_len, duplicate_value,
+                                                         origin, recursive, flocp);
+      set = &global_variable_set;
+    }
+#endif /* KMK */
 
 #ifndef CONFIG_WITH_STRCACHE2
   var_key.name = (char *) name;
   var_key.length = length;
   var_slot = (struct variable **) hash_find_slot (&set->table, &var_key);
 
-  if (env_overrides && origin == o_env)
-    origin = o_env_override;
+  /* if (env_overrides && origin == o_env)
+    origin = o_env_override; - bird moved this up */
 
   v = *var_slot;
 #else  /* CONFIG_WITH_STRCACHE2 */
-  var_key.name = name = strcache2_add (&variable_strcache, name, length);
-  var_key.length = length;
+  name = strcache2_add (&variable_strcache, name, length);
   if (   set != &global_variable_set
-      || !(v = strcache2_get_user_val (&variable_strcache, var_key.name)))
+      || !(v = strcache2_get_user_val (&variable_strcache, name)))
     {
+      var_key.name = name;
+      var_key.length = length;
       var_slot = (struct variable **) hash_find_slot_strcached (&set->table, &var_key);
       v = *var_slot;
     }
@@ -241,6 +322,9 @@ define_variable_in_set (const char *name, unsigned int length,
 #endif /* CONFIG_WITH_STRCACHE2 */
   if (! HASH_VACANT (v))
     {
+#ifdef KMK
+      RESOLVE_ALIAS_VARIABLE(v);
+#endif
       if (env_overrides && v->origin == o_env)
 	/* V came from in the environment.  Since it was defined
 	   before the switches were parsed, it wasn't affected by -e.  */
@@ -299,7 +383,7 @@ define_variable_in_set (const char *name, unsigned int length,
             v->fileinfo.filenm = 0;
 	  v->origin = origin;
 	  v->recursive = recursive;
-          MAKE_STATS_2(v->changes++);
+         VARIABLE_CHANGED (v);
 	}
       return v;
     }
@@ -312,7 +396,7 @@ define_variable_in_set (const char *name, unsigned int length,
   v = alloccache_alloc (&variable_cache);
 #endif
 #ifndef CONFIG_WITH_STRCACHE2
-  v->name = savestring (name, length);
+  v->name = xstrndup (name, length);
 #else
   v->name = name; /* already cached. */
 #endif
@@ -355,9 +439,26 @@ define_variable_in_set (const char *name, unsigned int length,
   v->exp_count = 0;
   v->per_target = 0;
   v->append = 0;
+  v->private_var = 0;
+#ifdef KMK
+  v->alias = 0;
+  v->aliased = 0;
+#endif
   v->export = v_default;
+#ifdef CONFIG_WITH_COMPILER
+  v->recursive_without_dollar = 0;
+  v->evalprog = 0;
+  v->expandprog = 0;
+  v->evalval_count = 0;
+  v->expand_count = 0;
+#else
+  MAKE_STATS_2(v->expand_count = 0);
+  MAKE_STATS_2(v->evalval_count = 0);
+#endif
   MAKE_STATS_2(v->changes = 0);
   MAKE_STATS_2(v->reallocs = 0);
+  MAKE_STATS_2(v->references = 0);
+  MAKE_STATS_2(v->cTicksEvalVal = 0);
 
   v->exportable = 1;
   if (*name != '_' && (*name < 'A' || *name > 'Z')
@@ -382,6 +483,190 @@ define_variable_in_set (const char *name, unsigned int length,
   return v;
 }
 
+
+/* Undefine variable named NAME in SET. LENGTH is the length of NAME, which
+   does not need to be null-terminated. ORIGIN specifies the origin of the
+   variable (makefile, command line or environment). */
+
+static void
+free_variable_name_and_value (const void *item);
+
+void
+undefine_variable_in_set (const char *name, unsigned int length,
+                          enum variable_origin origin,
+                          struct variable_set *set)
+{
+  struct variable *v;
+  struct variable **var_slot;
+  struct variable var_key;
+
+  if (set == NULL)
+    set = &global_variable_set;
+
+#ifndef CONFIG_WITH_STRCACHE2
+  var_key.name = (char *) name;
+  var_key.length = length;
+  var_slot = (struct variable **) hash_find_slot (&set->table, &var_key);
+#else
+  var_key.name = strcache2_lookup(&variable_strcache, name, length);
+  if (!var_key.name)
+    return;
+  var_key.length = length;
+  var_slot = (struct variable **) hash_find_slot_strcached (&set->table, &var_key);
+#endif
+
+  if (env_overrides && origin == o_env)
+    origin = o_env_override;
+
+  v = *var_slot;
+  if (! HASH_VACANT (v))
+    {
+#ifdef KMK
+      if (v->aliased || v->alias)
+        {
+           if (v->aliased)
+             error (NULL, _("Cannot undefine the aliased variable '%s'"), v->name);
+           else
+             error (NULL, _("Cannot undefine the variable alias '%s'"), v->name);
+          return;
+        }
+#endif
+
+      if (env_overrides && v->origin == o_env)
+	/* V came from in the environment.  Since it was defined
+	   before the switches were parsed, it wasn't affected by -e.  */
+	v->origin = o_env_override;
+
+      /* If the definition is from a stronger source than this one, don't
+         undefine it.  */
+      if ((int) origin >= (int) v->origin)
+	{
+          hash_delete_at (&set->table, var_slot);
+#ifdef CONFIG_WITH_STRCACHE2
+          if (set == &global_variable_set)
+            strcache2_set_user_val (&variable_strcache, v->name, NULL);
+#endif
+          free_variable_name_and_value (v);
+	}
+    }
+}
+
+#ifdef KMK
+/* Define variable named NAME as an alias of the variable TARGET.
+   SET defaults to the global set if NULL. FLOCP is just for completeness. */
+
+struct variable *
+define_variable_alias_in_set (const char *name, unsigned int length,
+                              struct variable *target, enum variable_origin origin,
+                              struct variable_set *set, const struct floc *flocp)
+{
+  struct variable     *v;
+  struct variable     **var_slot;
+
+  /* Look it up the hash table slot for it. */
+  name = strcache2_add (&variable_strcache, name, length);
+  if (   set != &global_variable_set
+      || !(v = strcache2_get_user_val (&variable_strcache, name)))
+    {
+      struct variable var_key;
+
+      var_key.name = name;
+      var_key.length = length;
+      var_slot = (struct variable **) hash_find_slot_strcached (&set->table, &var_key);
+      v = *var_slot;
+    }
+  else
+    {
+      assert (!v || (v->name == name && !HASH_VACANT (v)));
+      var_slot = 0;
+    }
+  if (! HASH_VACANT (v))
+    {
+      /* A variable of this name is already defined.
+         If the old definition is from a stronger source
+         than this one, don't redefine it.  */
+
+      if (env_overrides && v->origin == o_env)
+        /* V came from in the environment.  Since it was defined
+           before the switches were parsed, it wasn't affected by -e.  */
+        v->origin = o_env_override;
+
+      if ((int) origin < (int) v->origin)
+        return v;
+
+      if (v->value != 0 && !v->rdonly_val)
+          free (v->value);
+      VARIABLE_CHANGED (v);
+    }
+  else
+    {
+      /* Create a new variable definition and add it to the hash table.  */
+      v = alloccache_alloc (&variable_cache);
+      v->name = name; /* already cached. */
+      v->length = length;
+      hash_insert_at (&set->table, v, var_slot);
+      v->special = 0;
+      v->expanding = 0;
+      v->exp_count = 0;
+      v->per_target = 0;
+      v->append = 0;
+      v->private_var = 0;
+      v->aliased = 0;
+      v->export = v_default;
+#ifdef CONFIG_WITH_COMPILER
+      v->recursive_without_dollar = 0;
+      v->evalprog = 0;
+      v->expandprog = 0;
+      v->evalval_count = 0;
+      v->expand_count = 0;
+#else
+      MAKE_STATS_2(v->expand_count = 0);
+      MAKE_STATS_2(v->evalval_count = 0);
+#endif
+      MAKE_STATS_2(v->changes = 0);
+      MAKE_STATS_2(v->reallocs = 0);
+      MAKE_STATS_2(v->references = 0);
+      MAKE_STATS_2(v->cTicksEvalVal = 0);
+      v->exportable = 1;
+      if (*name != '_' && (*name < 'A' || *name > 'Z')
+          && (*name < 'a' || *name > 'z'))
+        v->exportable = 0;
+      else
+        {
+          for (++name; *name != '\0'; ++name)
+            if (*name != '_' && (*name < 'a' || *name > 'z')
+                && (*name < 'A' || *name > 'Z') && !ISDIGIT(*name))
+              break;
+
+          if (*name != '\0')
+            v->exportable = 0;
+        }
+
+     /* If it's the global set, remember the variable. */
+     if (set == &global_variable_set)
+       strcache2_set_user_val (&variable_strcache, v->name, v);
+    }
+
+  /* Common variable setup. */
+  v->alias = 1;
+  v->rdonly_val = 1;
+  v->value = (char *)target;
+  v->value_length = sizeof(*target); /* Non-zero to provoke trouble. */
+  v->value_alloc_len = sizeof(*target);
+  if (flocp != 0)
+    v->fileinfo = *flocp;
+  else
+    v->fileinfo.filenm = 0;
+  v->origin = origin;
+  v->recursive = 0;
+
+  /* Mark the target as aliased. */
+  target->aliased = 1;
+
+  return v;
+}
+#endif /* KMK */
+
 /* If the variable passed in is "special", handle its special nature.
    Currently there are two such variables, both used for introspection:
    .VARIABLES expands to a list of all the variables defined in this instance
@@ -469,6 +754,7 @@ lookup_special_var (struct variable *var)
       var->value_length = p - var->value - 1;
       var->value_alloc_len = max;
 #endif
+      VARIABLE_CHANGED (var);
 
       /* Remember how many variables are in our current count.  Since we never
          remove variables from the list, this is a reliable way to know whether
@@ -481,7 +767,7 @@ lookup_special_var (struct variable *var)
 }
 
 
-#ifdef KMK /* bird: speed */
+#if 0 /*FIX THIS - def KMK*/ /* bird: speed */
 MY_INLINE struct variable *
 lookup_cached_variable (const char *name)
 {
@@ -612,15 +898,31 @@ lookup_variable_for_assert (const char *name, unsigned int length)
 struct variable *
 lookup_variable (const char *name, unsigned int length)
 {
-#ifndef KMK
+#if 1 /*FIX THIS - ndef KMK*/
   const struct variable_set_list *setlist;
   struct variable var_key;
 #else /* KMK */
   struct variable *v;
 #endif /* KMK */
+  int is_parent = 0;
 #ifdef CONFIG_WITH_STRCACHE2
   const char *cached_name;
+#endif
 
+# ifdef KMK
+  /* Check for kBuild-define- local variable accesses and handle these first. */
+  if (length > 3 && name[0] == '[')
+    {
+      struct variable *v = lookup_kbuild_object_variable_accessor(name, length);
+      if (v != VAR_NOT_KBUILD_ACCESSOR)
+        {
+          MAKE_STATS_2 (v->references++);
+          return v;
+        }
+    }
+# endif
+
+#ifdef CONFIG_WITH_STRCACHE2
   /* lookup the name in the string case, if it's not there it won't
      be in any of the sets either. */
   cached_name = strcache2_lookup (&variable_strcache, name, length);
@@ -628,7 +930,7 @@ lookup_variable (const char *name, unsigned int length)
     return NULL;
   name = cached_name;
 #endif /* CONFIG_WITH_STRCACHE2 */
-#ifndef KMK
+#if 1  /*FIX THIS - ndef KMK */
 
   var_key.name = (char *) name;
   var_key.length = length;
@@ -644,8 +946,16 @@ lookup_variable (const char *name, unsigned int length)
 # else  /* CONFIG_WITH_STRCACHE2 */
       v = (struct variable *) hash_find_item_strcached ((struct hash_table *) &set->table, &var_key);
 # endif /* CONFIG_WITH_STRCACHE2 */
-      if (v)
-	return v->special ? lookup_special_var (v) : v;
+      if (v && (!is_parent || !v->private_var))
+        {
+# ifdef KMK
+          RESOLVE_ALIAS_VARIABLE(v);
+# endif
+          MAKE_STATS_2 (v->references++);
+	   return v->special ? lookup_special_var (v) : v;
+        }
+
+      is_parent |= setlist->next_is_parent;
     }
 
 #else  /* KMK - need for speed */
@@ -713,10 +1023,78 @@ lookup_variable (const char *name, unsigned int length)
   }
 #endif /* VMS */
 
-#if !defined (KMK) || defined(VMS)
   return 0;
-#endif
 }
+
+#ifdef CONFIG_WITH_STRCACHE2
+/* Alternative version of lookup_variable that takes a name that's already in
+   the variable string cache. */
+struct variable *
+lookup_variable_strcached (const char *name)
+{
+  struct variable *v;
+#if 1 /*FIX THIS - ndef KMK*/
+  const struct variable_set_list *setlist;
+  struct variable var_key;
+#endif /* KMK */
+  int is_parent = 0;
+
+#ifndef NDEBUG
+  strcache2_verify_entry (&variable_strcache, name);
+#endif
+
+#ifdef KMK
+  /* Check for kBuild-define- local variable accesses and handle these first. */
+  if (strcache2_get_len(&variable_strcache, name) > 3 && name[0] == '[')
+    {
+      v = lookup_kbuild_object_variable_accessor(name, strcache2_get_len(&variable_strcache, name));
+      if (v != VAR_NOT_KBUILD_ACCESSOR)
+        {
+          MAKE_STATS_2 (v->references++);
+          return v;
+        }
+    }
+#endif
+
+#if 1  /*FIX THIS - ndef KMK */
+
+  var_key.name = (char *) name;
+  var_key.length = strcache2_get_len(&variable_strcache, name);
+
+  for (setlist = current_variable_set_list;
+       setlist != 0; setlist = setlist->next)
+    {
+      const struct variable_set *set = setlist->set;
+
+      v = (struct variable *) hash_find_item_strcached ((struct hash_table *) &set->table, &var_key);
+      if (v && (!is_parent || !v->private_var))
+        {
+# ifdef KMK
+          RESOLVE_ALIAS_VARIABLE(v);
+# endif
+          MAKE_STATS_2 (v->references++);
+	   return v->special ? lookup_special_var (v) : v;
+        }
+
+      is_parent |= setlist->next_is_parent;
+    }
+
+#else  /* KMK - need for speed */
+
+  v = lookup_cached_variable (name);
+  assert (lookup_variable_for_assert(name, length) == v);
+#ifdef VMS
+  if (v)
+#endif
+    return v;
+#endif /* KMK - need for speed */
+#ifdef VMS
+# error "Port me (split out the relevant code from lookup_varaible and call it)"
+#endif
+  return 0;
+}
+#endif
+
 
 /* Lookup a variable whose name is a string starting at NAME
    and with LENGTH chars in set SET.  NAME need not be null-terminated.
@@ -735,6 +1113,21 @@ lookup_variable_in_set (const char *name, unsigned int length,
   return (struct variable *) hash_find_item ((struct hash_table *) &set->table, &var_key);
 #else  /* CONFIG_WITH_STRCACHE2 */
   const char *cached_name;
+  struct variable *v;
+
+# ifdef KMK
+  /* Check for kBuild-define- local variable accesses and handle these first. */
+  if (length > 3 && name[0] == '[' && set == &global_variable_set)
+    {
+      v = lookup_kbuild_object_variable_accessor(name, length);
+      if (v != VAR_NOT_KBUILD_ACCESSOR)
+        {
+          RESOLVE_ALIAS_VARIABLE(v);
+          MAKE_STATS_2 (v->references++);
+          return v;
+        }
+    }
+# endif
 
   /* lookup the name in the string case, if it's not there it won't
      be in any of the sets either.  Optimize lookups in the global set. */
@@ -744,17 +1137,22 @@ lookup_variable_in_set (const char *name, unsigned int length,
 
   if (set == &global_variable_set)
     {
-      struct variable *v;
       v = strcache2_get_user_val (&variable_strcache, cached_name);
       assert (!v || v->name == cached_name);
-      return v;
     }
+  else
+    {
+      var_key.name = cached_name;
+      var_key.length = length;
 
-  var_key.name = cached_name;
-  var_key.length = length;
-
-  return (struct variable *) hash_find_item_strcached (
-    (struct hash_table *) &set->table, &var_key);
+      v = (struct variable *) hash_find_item_strcached (
+        (struct hash_table *) &set->table, &var_key);
+    }
+# ifdef KMK
+  RESOLVE_ALIAS_VARIABLE(v);
+# endif
+  MAKE_STATS_2 (if (v) v->references++);
+  return v;
 #endif /* CONFIG_WITH_STRCACHE2 */
 }
 
@@ -802,6 +1200,7 @@ initialize_file_variables (struct file *file, int reading)
     {
       initialize_file_variables (file->double_colon, reading);
       l->next = file->double_colon->variables;
+      l->next_is_parent = 0;
       return;
     }
 
@@ -812,6 +1211,7 @@ initialize_file_variables (struct file *file, int reading)
       initialize_file_variables (file->parent, reading);
       l->next = file->parent->variables;
     }
+  l->next_is_parent = 1;
 
   /* If we're not reading makefiles and we haven't looked yet, see if
      we can find pattern variables for this target.  */
@@ -864,6 +1264,7 @@ initialize_file_variables (struct file *file, int reading)
               /* Also mark it as a per-target and copy export status. */
               v->per_target = p->variable.per_target;
               v->export = p->variable.export;
+              v->private_var = p->variable.private_var;
             }
           while ((p = lookup_pattern_var (p, file->name)) != 0);
 
@@ -877,7 +1278,9 @@ initialize_file_variables (struct file *file, int reading)
   if (file->pat_variables != 0)
     {
       file->pat_variables->next = l->next;
+      file->pat_variables->next_is_parent = l->next_is_parent;
       l->next = file->pat_variables;
+      l->next_is_parent = 0;
     }
 }
 
@@ -912,6 +1315,7 @@ create_new_variable_set (void)
 #endif
   setlist->set = set;
   setlist->next = current_variable_set_list;
+  setlist->next_is_parent = 0;
 
   return setlist;
 }
@@ -922,6 +1326,10 @@ free_variable_name_and_value (const void *item)
   struct variable *v = (struct variable *) item;
 #ifndef CONFIG_WITH_STRCACHE2
   free (v->name);
+#endif
+#ifdef CONFIG_WITH_COMPILER
+  if (v->evalprog || v->expandprog)
+    kmk_cc_variable_deleted (v);
 #endif
 #ifdef CONFIG_WITH_RDONLY_VARIABLE_VALUE
   if (!v->rdonly_val)
@@ -994,6 +1402,7 @@ pop_variable_scope (void)
       set = global_setlist.set;
       global_setlist.set = setlist->set;
       global_setlist.next = setlist->next;
+      global_setlist.next_is_parent = setlist->next_is_parent;
     }
 
   /* Free the one we no longer need.  */
@@ -1035,7 +1444,20 @@ merge_variable_sets (struct variable_set *to_set,
 	else
 	  {
 	    /* GKM FIXME: delete in from_set->table */
-	    free (from_var->value);
+#ifdef KMK
+            if (from_var->aliased)
+              fatal(NULL, ("Attempting to delete aliased variable '%s'"), from_var->name);
+            if (from_var->alias)
+              fatal(NULL, ("Attempting to delete variable aliased '%s'"), from_var->name);
+#endif
+#ifdef CONFIG_WITH_COMPILER
+            if (from_var->evalprog || from_var->expandprog)
+              kmk_cc_variable_deleted (from_var);
+#endif
+#ifdef CONFIG_WITH_RDONLY_VARIABLE_VALUE
+            if (!from_var->rdonly_val)
+#endif
+              free (from_var->value);
 	    free (from_var);
 	  }
       }
@@ -1129,7 +1551,7 @@ define_automatic_variables (void)
 #endif
 
   sprintf (buf, "%u", makelevel);
-  (void) define_variable (MAKELEVEL_NAME, MAKELEVEL_LENGTH, buf, o_env, 0);
+  define_variable_cname (MAKELEVEL_NAME, buf, o_env, 0);
 
   sprintf (buf, "%s%s%s",
 	   version_string,
@@ -1138,30 +1560,25 @@ define_automatic_variables (void)
 	   (remote_description == 0 || remote_description[0] == '\0')
 	   ? "" : remote_description);
 #ifndef KMK
-  (void) define_variable ("MAKE_VERSION", 12, buf, o_default, 0);
+  define_variable_cname ("MAKE_VERSION", buf, o_default, 0);
 #else /* KMK */
 
   /* Define KMK_VERSION to indicate kMk. */
-  (void) define_variable ("KMK_VERSION", 11, buf, o_default, 0);
+  define_variable_cname ("KMK_VERSION", buf, o_default, 0);
 
   /* Define KBUILD_VERSION* */
   sprintf (buf, "%d", KBUILD_VERSION_MAJOR);
-  define_variable ("KBUILD_VERSION_MAJOR", sizeof ("KBUILD_VERSION_MAJOR") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_VERSION_MAJOR", buf, o_default, 0);
   sprintf (buf, "%d", KBUILD_VERSION_MINOR);
-  define_variable ("KBUILD_VERSION_MINOR", sizeof("KBUILD_VERSION_MINOR") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_VERSION_MINOR", buf, o_default, 0);
   sprintf (buf, "%d", KBUILD_VERSION_PATCH);
-  define_variable ("KBUILD_VERSION_PATCH", sizeof ("KBUILD_VERSION_PATCH") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_VERSION_PATCH", buf, o_default, 0);
   sprintf (buf, "%d", KBUILD_SVN_REV);
-  define_variable ("KBUILD_KMK_REVISION", sizeof ("KBUILD_KMK_REVISION") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_KMK_REVISION", buf, o_default, 0);
 
   sprintf (buf, "%d.%d.%d-r%d", KBUILD_VERSION_MAJOR, KBUILD_VERSION_MINOR,
            KBUILD_VERSION_PATCH, KBUILD_SVN_REV);
-  define_variable ("KBUILD_VERSION", sizeof ("KBUILD_VERSION") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_VERSION", buf, o_default, 0);
 
   /* The host defaults. The BUILD_* stuff will be replaced by KBUILD_* soon. */
   envvar1 = lookup_variable (STRING_SIZE_TUPLE ("KBUILD_HOST"));
@@ -1170,11 +1587,9 @@ define_automatic_variables (void)
   if (envvar1 && envvar2 && strcmp (envvar1->value, envvar2->value))
     error (NULL, _("KBUILD_HOST and BUILD_PLATFORM differs, using KBUILD_HOST=%s."), val);
   if (!envvar1)
-    define_variable ("KBUILD_HOST", sizeof ("KBUILD_HOST") - 1,
-                     val, o_default, 0);
+    define_variable_cname ("KBUILD_HOST", val, o_default, 0);
   if (!envvar2)
-    define_variable ("BUILD_PLATFORM", sizeof ("BUILD_PLATFORM") - 1,
-                     val, o_default, 0);
+    define_variable_cname ("BUILD_PLATFORM", val, o_default, 0);
 
   envvar1 = lookup_variable (STRING_SIZE_TUPLE ("KBUILD_HOST_ARCH"));
   envvar2 = lookup_variable (STRING_SIZE_TUPLE ("BUILD_PLATFORM_ARCH"));
@@ -1182,11 +1597,9 @@ define_automatic_variables (void)
   if (envvar1 && envvar2 && strcmp (envvar1->value, envvar2->value))
     error (NULL, _("KBUILD_HOST_ARCH and BUILD_PLATFORM_ARCH differs, using KBUILD_HOST_ARCH=%s."), val);
   if (!envvar1)
-    define_variable ("KBUILD_HOST_ARCH", sizeof ("KBUILD_HOST_ARCH") - 1,
-                     val, o_default, 0);
+    define_variable_cname ("KBUILD_HOST_ARCH", val, o_default, 0);
   if (!envvar2)
-    define_variable ("BUILD_PLATFORM_ARCH", sizeof ("BUILD_PLATFORM_ARCH") - 1,
-                     val, o_default, 0);
+    define_variable_cname ("BUILD_PLATFORM_ARCH", val, o_default, 0);
 
   envvar1 = lookup_variable (STRING_SIZE_TUPLE ("KBUILD_HOST_CPU"));
   envvar2 = lookup_variable (STRING_SIZE_TUPLE ("BUILD_PLATFORM_CPU"));
@@ -1194,11 +1607,9 @@ define_automatic_variables (void)
   if (envvar1 && envvar2 && strcmp (envvar1->value, envvar2->value))
     error (NULL, _("KBUILD_HOST_CPU and BUILD_PLATFORM_CPU differs, using KBUILD_HOST_CPU=%s."), val);
   if (!envvar1)
-    define_variable ("KBUILD_HOST_CPU", sizeof ("KBUILD_HOST_CPU") - 1,
-                     val, o_default, 0);
+    define_variable_cname ("KBUILD_HOST_CPU", val, o_default, 0);
   if (!envvar2)
-    define_variable ("BUILD_PLATFORM_CPU", sizeof ("BUILD_PLATFORM_CPU") - 1,
-                     val, o_default, 0);
+    define_variable_cname ("BUILD_PLATFORM_CPU", val, o_default, 0);
 
   /* The host kernel version. */
 #if defined(WINDOWS32)
@@ -1237,38 +1648,31 @@ define_automatic_variables (void)
 #endif
 
   sprintf (buf, "%lu.%lu.%lu.%lu", ulMajor, ulMinor, ulPatch, ul4th);
-  define_variable ("KBUILD_HOST_VERSION", sizeof ("KBUILD_HOST_VERSION") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_HOST_VERSION", buf, o_default, 0);
 
   sprintf (buf, "%lu", ulMajor);
-  define_variable ("KBUILD_HOST_VERSION_MAJOR", sizeof ("KBUILD_HOST_VERSION_MAJOR") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_HOST_VERSION_MAJOR", buf, o_default, 0);
 
   sprintf (buf, "%lu", ulMinor);
-  define_variable ("KBUILD_HOST_VERSION_MINOR", sizeof ("KBUILD_HOST_VERSION_MINOR") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_HOST_VERSION_MINOR", buf, o_default, 0);
 
   sprintf (buf, "%lu", ulPatch);
-  define_variable ("KBUILD_HOST_VERSION_PATCH", sizeof ("KBUILD_HOST_VERSION_PATCH") - 1,
-                   buf, o_default, 0);
+  define_variable_cname ("KBUILD_HOST_VERSION_PATCH", buf, o_default, 0);
 
   /* The kBuild locations. */
-  define_variable ("KBUILD_PATH", sizeof ("KBUILD_PATH") - 1,
-                   get_kbuild_path (), o_default, 0);
-  define_variable ("KBUILD_BIN_PATH", sizeof ("KBUILD_BIN_PATH") - 1,
-                   get_kbuild_bin_path (), o_default, 0);
+  define_variable_cname ("KBUILD_PATH", get_kbuild_path (), o_default, 0);
+  define_variable_cname ("KBUILD_BIN_PATH", get_kbuild_bin_path (), o_default, 0);
 
-  define_variable ("PATH_KBUILD", sizeof ("PATH_KBUILD") - 1,
-                   get_kbuild_path (), o_default, 0);
-  define_variable ("PATH_KBUILD_BIN", sizeof ("PATH_KBUILD_BIN") - 1,
-                   get_kbuild_bin_path (), o_default, 0);
+  define_variable_cname ("PATH_KBUILD", get_kbuild_path (), o_default, 0);
+  define_variable_cname ("PATH_KBUILD_BIN", get_kbuild_bin_path (), o_default, 0);
 
   /* Define KMK_FEATURES to indicate various working KMK features. */
 # if defined (CONFIG_WITH_RSORT) \
   && defined (CONFIG_WITH_ABSPATHEX) \
   && defined (CONFIG_WITH_TOUPPER_TOLOWER) \
   && defined (CONFIG_WITH_DEFINED) \
-  && defined (CONFIG_WITH_VALUE_LENGTH) && defined (CONFIG_WITH_COMPARE) \
+  && defined (CONFIG_WITH_VALUE_LENGTH) \
+  && defined (CONFIG_WITH_COMPARE) \
   && defined (CONFIG_WITH_STACK) \
   && defined (CONFIG_WITH_MATH) \
   && defined (CONFIG_WITH_XARGS) \
@@ -1289,38 +1693,40 @@ define_automatic_variables (void)
   && defined (CONFIG_WITH_STRING_FUNCTIONS) \
   && defined (CONFIG_WITH_DEFINED_FUNCTIONS) \
   && defined (KMK_HELPERS)
-  (void) define_variable ("KMK_FEATURES", 12,
-                          "append-dash-n abspath includedep-queue install-hard-linking"
-                          " rsort"
-                          " abspathex"
-                          " toupper tolower"
-                          " defined"
-                          " comp-vars comp-cmds comp-cmds-ex"
-                          " stack"
-                          " math-int"
-                          " xargs"
-                          " explicit-multitarget"
-                          " dot-must-make"
-                          " prepend-assignment"
-                          " set-conditionals intersects"
-                          " date"
-                          " file-size"
-                          " expr if-expr select"
-                          " where"
-                          " which"
-                          " evalctx evalval evalvalctx evalcall evalcall2 eval-opt-var"
-                          " make-stats"
-                          " commands"
-                          " printf"
-                          " for while"
-                          " root"
-                          " length insert pos lastpos substr translate"
-                          " kb-src-tool kb-obj-base kb-obj-suff kb-src-prop kb-src-one kb-exp-tmpl "
-                          " firstdefined lastdefined "
-                          , o_default, 0);
+  define_variable_cname ("KMK_FEATURES",
+                         "append-dash-n abspath includedep-queue install-hard-linking umask"
+                         " kBuild-define"
+                         " rsort"
+                         " abspathex"
+                         " toupper tolower"
+                         " defined"
+                         " comp-vars comp-cmds comp-cmds-ex"
+                         " stack"
+                         " math-int"
+                         " xargs"
+                         " explicit-multitarget"
+                         " dot-must-make"
+                         " prepend-assignment"
+                         " set-conditionals intersects"
+                         " date"
+                         " file-size"
+                         " expr if-expr select"
+                         " where"
+                         " which"
+                         " evalctx evalval evalvalctx evalcall evalcall2 eval-opt-var"
+                         " make-stats"
+                         " commands"
+                         " printf"
+                         " for while"
+                         " root"
+                         " length insert pos lastpos substr translate"
+                         " kb-src-tool kb-obj-base kb-obj-suff kb-src-prop kb-src-one kb-exp-tmpl"
+                         " firstdefined lastdefined"
+                         , o_default, 0);
 # else /* MSC can't deal with strings mixed with #if/#endif, thus the slow way. */
 #  error "All features should be enabled by default!"
-  strcpy (buf, "append-dash-n abspath includedep-queue install-hard-linking");
+  strcpy (buf, "append-dash-n abspath includedep-queue install-hard-linking umask"
+               " kBuild-define");
 #  if defined (CONFIG_WITH_RSORT)
   strcat (buf, " rsort");
 #  endif
@@ -1399,14 +1805,14 @@ define_automatic_variables (void)
 #  if defined (KMK_HELPERS)
   strcat (buf, " kb-src-tool kb-obj-base kb-obj-suff kb-src-prop kb-src-one kb-exp-tmpl");
 #  endif
-  (void) define_variable ("KMK_FEATURES", 12, buf, o_default, 0);
+  define_variable_cname ("KMK_FEATURES", buf, o_default, 0);
 # endif
 
 #endif /* KMK */
 
 #ifdef CONFIG_WITH_KMK_BUILTIN
   /* The supported kMk Builtin commands. */
-  (void) define_variable ("KMK_BUILTIN", 11, "append cat chmod cp cmp echo expr install kDepIDB ln md5sum mkdir mv printf rm rmdir sleep test", o_default, 0);
+  define_variable_cname ("KMK_BUILTIN", "append cat chmod cp cmp echo expr install kDepIDB ln md5sum mkdir mv printf rm rmdir sleep test", o_default, 0);
 #endif
 
 #ifdef  __MSDOS__
@@ -1418,13 +1824,13 @@ define_automatic_variables (void)
     struct variable *mshp = lookup_variable ("MAKESHELL", 9);
     struct variable *comp = lookup_variable ("COMSPEC", 7);
 
-    /* Make $MAKESHELL override $SHELL even if -e is in effect.  */
+    /* $(MAKESHELL) overrides $(SHELL) even if -e is in effect.  */
     if (mshp)
       (void) define_variable (shell_str, shlen,
 			      mshp->value, o_env_override, 0);
     else if (comp)
       {
-	/* $COMSPEC shouldn't override $SHELL.  */
+	/* $(COMSPEC) shouldn't override $(SHELL).  */
 	struct variable *shp = lookup_variable (shell_str, shlen);
 
 	if (!shp)
@@ -1483,7 +1889,7 @@ define_automatic_variables (void)
 
   /* This won't override any definition, but it will provide one if there
      isn't one there.  */
-  v = define_variable ("SHELL", 5, default_shell, o_default, 0);
+  v = define_variable_cname ("SHELL", default_shell, o_default, 0);
 #ifdef __MSDOS__
   v->export = v_export;  /*  Export always SHELL.  */
 #endif
@@ -1512,36 +1918,36 @@ define_automatic_variables (void)
 #endif
 
   /* Make sure MAKEFILES gets exported if it is set.  */
-  v = define_variable ("MAKEFILES", 9, "", o_default, 0);
+  v = define_variable_cname ("MAKEFILES", "", o_default, 0);
   v->export = v_ifset;
 
   /* Define the magic D and F variables in terms of
      the automatic variables they are variations of.  */
 
 #ifdef VMS
-  define_variable ("@D", 2, "$(dir $@)", o_automatic, 1);
-  define_variable ("%D", 2, "$(dir $%)", o_automatic, 1);
-  define_variable ("*D", 2, "$(dir $*)", o_automatic, 1);
-  define_variable ("<D", 2, "$(dir $<)", o_automatic, 1);
-  define_variable ("?D", 2, "$(dir $?)", o_automatic, 1);
-  define_variable ("^D", 2, "$(dir $^)", o_automatic, 1);
-  define_variable ("+D", 2, "$(dir $+)", o_automatic, 1);
+  define_variable_cname ("@D", "$(dir $@)", o_automatic, 1);
+  define_variable_cname ("%D", "$(dir $%)", o_automatic, 1);
+  define_variable_cname ("*D", "$(dir $*)", o_automatic, 1);
+  define_variable_cname ("<D", "$(dir $<)", o_automatic, 1);
+  define_variable_cname ("?D", "$(dir $?)", o_automatic, 1);
+  define_variable_cname ("^D", "$(dir $^)", o_automatic, 1);
+  define_variable_cname ("+D", "$(dir $+)", o_automatic, 1);
 #else
-  define_variable ("@D", 2, "$(patsubst %/,%,$(dir $@))", o_automatic, 1);
-  define_variable ("%D", 2, "$(patsubst %/,%,$(dir $%))", o_automatic, 1);
-  define_variable ("*D", 2, "$(patsubst %/,%,$(dir $*))", o_automatic, 1);
-  define_variable ("<D", 2, "$(patsubst %/,%,$(dir $<))", o_automatic, 1);
-  define_variable ("?D", 2, "$(patsubst %/,%,$(dir $?))", o_automatic, 1);
-  define_variable ("^D", 2, "$(patsubst %/,%,$(dir $^))", o_automatic, 1);
-  define_variable ("+D", 2, "$(patsubst %/,%,$(dir $+))", o_automatic, 1);
+  define_variable_cname ("@D", "$(patsubst %/,%,$(dir $@))", o_automatic, 1);
+  define_variable_cname ("%D", "$(patsubst %/,%,$(dir $%))", o_automatic, 1);
+  define_variable_cname ("*D", "$(patsubst %/,%,$(dir $*))", o_automatic, 1);
+  define_variable_cname ("<D", "$(patsubst %/,%,$(dir $<))", o_automatic, 1);
+  define_variable_cname ("?D", "$(patsubst %/,%,$(dir $?))", o_automatic, 1);
+  define_variable_cname ("^D", "$(patsubst %/,%,$(dir $^))", o_automatic, 1);
+  define_variable_cname ("+D", "$(patsubst %/,%,$(dir $+))", o_automatic, 1);
 #endif
-  define_variable ("@F", 2, "$(notdir $@)", o_automatic, 1);
-  define_variable ("%F", 2, "$(notdir $%)", o_automatic, 1);
-  define_variable ("*F", 2, "$(notdir $*)", o_automatic, 1);
-  define_variable ("<F", 2, "$(notdir $<)", o_automatic, 1);
-  define_variable ("?F", 2, "$(notdir $?)", o_automatic, 1);
-  define_variable ("^F", 2, "$(notdir $^)", o_automatic, 1);
-  define_variable ("+F", 2, "$(notdir $+)", o_automatic, 1);
+  define_variable_cname ("@F", "$(notdir $@)", o_automatic, 1);
+  define_variable_cname ("%F", "$(notdir $%)", o_automatic, 1);
+  define_variable_cname ("*F", "$(notdir $*)", o_automatic, 1);
+  define_variable_cname ("<F", "$(notdir $<)", o_automatic, 1);
+  define_variable_cname ("?F", "$(notdir $?)", o_automatic, 1);
+  define_variable_cname ("^F", "$(notdir $^)", o_automatic, 1);
+  define_variable_cname ("+F", "$(notdir $+)", o_automatic, 1);
 #ifdef CONFIG_WITH_LAZY_DEPS_VARS
   define_variable ("^", 1, "$(deps $@)", o_automatic, 1);
   define_variable ("+", 1, "$(deps-all $@)", o_automatic, 1);
@@ -1709,7 +2115,7 @@ target_environment (struct file *file)
 		strcmp(v->name, "PATH") == 0)
 	      convert_Path_to_windows32(value, ';');
 #endif
-	    *result++ = xstrdup (concat (v->name, "=", value));
+	    *result++ = xstrdup (concat (3, v->name, "=", value));
 	    free (value);
 	  }
 	else
@@ -1719,7 +2125,7 @@ target_environment (struct file *file)
                 strcmp(v->name, "PATH") == 0)
               convert_Path_to_windows32(v->value, ';');
 #endif
-	    *result++ = xstrdup (concat (v->name, "=", v->value));
+	    *result++ = xstrdup (concat (3, v->name, "=", v->value));
 	  }
       }
 
@@ -1742,6 +2148,9 @@ void append_string_to_variable (struct variable *v, const char *value, unsigned 
      The new value is the unexpanded old and new values. */
   unsigned int new_value_len = value_len + (v->value_length != 0 ? 1 + v->value_length : 0);
   int done_1st_prepend_copy = 0;
+#ifdef KMK
+  assert (!v->alias);
+#endif
 
   /* Drop empty strings. Use $(NO_SUCH_VARIABLE) if a space is wanted. */
   if (!value_len)
@@ -1798,9 +2207,10 @@ void append_string_to_variable (struct variable *v, const char *value, unsigned 
   else
     memcpy (v->value, value, value_len + 1);
   v->value_length = new_value_len;
+  VARIABLE_CHANGED (v);
 }
 
-static struct variable *
+struct variable *
 do_variable_definition_append (const struct floc *flocp, struct variable *v,
                                const char *value, unsigned int value_len,
                                int simple_value, enum variable_origin origin,
@@ -1880,8 +2290,12 @@ do_variable_definition_2 (const struct floc *flocp,
   int append = 0;
   int conditional = 0;
   const size_t varname_len = strlen (varname); /* bird */
+
 #ifdef CONFIG_WITH_VALUE_LENGTH
-  assert (value_len == ~0U || value_len == strlen (value));
+  if (value_len == ~0U)
+    value_len = strlen (value);
+  else
+    assert (value_len == strlen (value));
 #endif
 
   /* Calculate the variable's new value in VALUE.  */
@@ -1907,7 +2321,7 @@ do_variable_definition_2 (const struct floc *flocp,
         if (value_len == ~0U)
           value_len = strlen (value);
         if (!free_value)
-          p = alloc_value = savestring (value, value_len);
+          p = alloc_value = xstrndup (value, value_len);
         else
           {
             assert (value == free_value);
@@ -1950,16 +2364,9 @@ do_variable_definition_2 (const struct floc *flocp,
       {
 #endif
 
-#ifdef CONFIG_WITH_LOCAL_VARIABLES
-          /* If we have += but we're in a target or local variable context,
-             we want to append only with other variables in the context of
-             this target.  */
-        if (target_var || origin == o_local)
-#else
         /* If we have += but we're in a target variable context, we want to
            append only with other variables in the context of this target.  */
         if (target_var)
-#endif
           {
             append = 1;
             v = lookup_variable_in_set (varname, varname_len,
@@ -1970,6 +2377,26 @@ do_variable_definition_2 (const struct floc *flocp,
             if (v && !v->append)
               append = 0;
           }
+#ifdef KMK
+        else if (   g_pTopKbEvalData
+                 || (   varname_len > 3
+                     && varname[0] == '['
+                     && is_kbuild_object_variable_accessor (varname, varname_len)) )
+          {
+            v = kbuild_object_variable_pre_append (varname, varname_len,
+                                                   value, value_len, simple_value,
+                                                   origin, org_flavor == f_append, flocp);
+            if (free_value)
+               free (free_value);
+            return v;
+          }
+#endif
+#ifdef CONFIG_WITH_LOCAL_VARIABLES
+        /* If 'local', restrict it to the current variable context. */
+        else if (origin == o_local)
+          v = lookup_variable_in_set (varname, varname_len,
+                                      current_variable_set_list->set);
+#endif
         else
           v = lookup_variable (varname, varname_len);
 
@@ -1993,7 +2420,6 @@ do_variable_definition_2 (const struct floc *flocp,
 # endif
             if (free_value)
                free (free_value);
-            MAKE_STATS_2(v->changes++);
             return v;
 #else /* !CONFIG_WITH_VALUE_LENGTH */
 
@@ -2001,7 +2427,7 @@ do_variable_definition_2 (const struct floc *flocp,
 
             unsigned int oldlen, vallen;
             const char *val;
-            char *tp;
+            char *tp = NULL;
 
             val = value;
             if (v->recursive)
@@ -2014,26 +2440,28 @@ do_variable_definition_2 (const struct floc *flocp,
                  when it was set; and from the expanded new value.  Allocate
                  memory for the expansion as we may still need the rest of the
                  buffer if we're looking at a target-specific variable.  */
-              val = alloc_value = allocated_variable_expand (val);
+              val = tp = allocated_variable_expand (val);
 
             oldlen = strlen (v->value);
             vallen = strlen (val);
-            tp = alloca (oldlen + 1 + vallen + 1);
+            p = alloc_value = xmalloc (oldlen + 1 + vallen + 1);
 # ifdef CONFIG_WITH_PREPEND_ASSIGNMENT
             if (org_flavor == f_prepend)
               {
-                memcpy (tp, val, vallen);
-                tp[oldlen] = ' ';
-                memcpy (&tp[oldlen + 1], v->value, oldlen + 1);
+                memcpy (alloc_value, val, vallen);
+                alloc_value[oldlen] = ' ';
+                memcpy (&alloc_value[oldlen + 1], v->value, oldlen + 1);
               }
             else
 # endif /* CONFIG_WITH_PREPEND_ASSIGNMENT */
               {
-                memcpy (tp, v->value, oldlen);
-                tp[oldlen] = ' ';
-                memcpy (&tp[oldlen + 1], val, vallen + 1);
+                memcpy (alloc_value, v->value, oldlen);
+                alloc_value[oldlen] = ' ';
+                memcpy (&alloc_value[oldlen + 1], val, vallen + 1);
               }
-            p = tp;
+
+            if (tp)
+              free (tp);
 #endif /* !CONFIG_WITH_VALUE_LENGTH */
           }
       }
@@ -2146,10 +2574,10 @@ do_variable_definition_2 (const struct floc *flocp,
         }
       else
         {
-          if (alloc_value)
-            free (alloc_value);
+          char *tp = alloc_value;
 
           alloc_value = allocated_variable_expand (p);
+
           if (find_and_set_default_shell (alloc_value))
             {
               v = define_variable_in_set (varname, varname_len, p,
@@ -2165,6 +2593,9 @@ do_variable_definition_2 (const struct floc *flocp,
             }
           else
             v = lookup_variable (varname, varname_len);
+
+          if (tp)
+            free (tp);
         }
     }
   else
@@ -2202,80 +2633,32 @@ do_variable_definition_2 (const struct floc *flocp,
   return v->special ? set_special_var (v) : v;
 }
 
-/* Try to interpret LINE (a null-terminated string) as a variable definition.
+/* Parse P (a null-terminated string) as a variable definition.
 
-   ORIGIN may be o_file, o_override, o_env, o_env_override,
-   or o_command specifying that the variable definition comes
-   from a makefile, an override directive, the environment with
-   or without the -e switch, or the command line.
+   If it is not a variable definition, return NULL.
 
-   See the comments for parse_variable_definition().
+   If it is a variable definition, return a pointer to the char after the
+   assignment token and set *FLAVOR to the type of variable assignment.  */
 
-   If LINE was recognized as a variable definition, a pointer to its `struct
-   variable' is returned.  If LINE is not a variable definition, NULL is
-   returned.  */
-
-struct variable *
-#ifndef CONFIG_WITH_VALUE_LENGTH
-parse_variable_definition (struct variable *v, char *line)
-#else
-parse_variable_definition (struct variable *v, char *line, char *eos)
-#endif
+char *
+parse_variable_definition (const char *p, enum variable_flavor *flavor)
 {
-  register int c;
-  register char *p = line;
-  register char *beg;
-  register char *end;
-  enum variable_flavor flavor = f_bogus;
-#ifndef CONFIG_WITH_VALUE_LENGTH
-  char *name;
-#endif
+  int wspace = 0;
+
+  p = next_token (p);
 
   while (1)
     {
-      c = *p++;
+      int c = *p++;
+
+      /* If we find a comment or EOS, it's not a variable definition.  */
       if (c == '\0' || c == '#')
-	return 0;
-      if (c == '=')
+	return NULL;
+
+      if (c == '$')
 	{
-	  end = p - 1;
-	  flavor = f_recursive;
-	  break;
-	}
-      else if (c == ':')
-	if (*p == '=')
-	  {
-	    end = p++ - 1;
-	    flavor = f_simple;
-	    break;
-	  }
-	else
-	  /* A colon other than := is a rule line, not a variable defn.  */
-	  return 0;
-      else if (c == '+' && *p == '=')
-	{
-	  end = p++ - 1;
-	  flavor = f_append;
-	  break;
-	}
-#ifdef CONFIG_WITH_PREPEND_ASSIGNMENT
-      else if (c == '<' && *p == '=')
-        {
-          end = p++ - 1;
-          flavor = f_prepend;
-          break;
-        }
-#endif
-      else if (c == '?' && *p == '=')
-        {
-          end = p++ - 1;
-          flavor = f_conditional;
-          break;
-        }
-      else if (c == '$')
-	{
-	  /* This might begin a variable expansion reference.  Make sure we
-	     don't misrecognize chars inside the reference as =, := or +=.  */
+	  /* This begins a variable expansion reference.  Make sure we don't
+	     treat chars inside the reference as assignment tokens.  */
 	  char closeparen;
 	  int count;
 	  c = *p++;
@@ -2284,7 +2667,8 @@ parse_variable_definition (struct variable *v, char *line, char *eos)
 	  else if (c == '{')
 	    closeparen = '}';
 	  else
-	    continue;		/* Nope.  */
+            /* '$$' or '$X'.  Either way, nothing special to do here.  */
+	    continue;
 
 	  /* P now points past the opening paren or brace.
 	     Count parens or braces until it is matched.  */
@@ -2299,19 +2683,99 @@ parse_variable_definition (struct variable *v, char *line, char *eos)
 		  break;
 		}
 	    }
+          continue;
 	}
+
+      /* If we find whitespace skip it, and remember we found it.  */
+      if (isblank ((unsigned char)c))
+        {
+          wspace = 1;
+          p = next_token (p);
+          c = *p;
+          if (c == '\0')
+            return NULL;
+          ++p;
+        }
+
+
+      if (c == '=')
+	{
+	  *flavor = f_recursive;
+	  return (char *)p;
+	}
+
+      /* Match assignment variants (:=, +=, ?=)  */
+      if (*p == '=')
+        {
+          switch (c)
+            {
+              case ':':
+                *flavor = f_simple;
+                break;
+              case '+':
+                *flavor = f_append;
+                break;
+#ifdef CONFIG_WITH_PREPEND_ASSIGNMENT
+              case '<':
+               *flavor = f_prepend;
+                break;
+#endif
+              case '?':
+                *flavor = f_conditional;
+                break;
+              default:
+                /* If we skipped whitespace, non-assignments means no var.  */
+                if (wspace)
+                  return NULL;
+
+                /* Might be assignment, or might be $= or #=.  Check.  */
+                continue;
+            }
+          return (char *)++p;
+        }
+      else if (c == ':')
+        /* A colon other than := is a rule line, not a variable defn.  */
+        return NULL;
+
+      /* If we skipped whitespace, non-assignments means no var.  */
+      if (wspace)
+        return NULL;
     }
-  v->flavor = flavor;
+
+  return (char *)p;
+}
+
+/* Try to interpret LINE (a null-terminated string) as a variable definition.
+
+   If LINE was recognized as a variable definition, a pointer to its `struct
+   variable' is returned.  If LINE is not a variable definition, NULL is
+   returned.  */
+
+struct variable *
+assign_variable_definition (struct variable *v, char *line IF_WITH_VALUE_LENGTH_PARAM(char *eos))
+{
+  char *beg;
+  char *end;
+  enum variable_flavor flavor;
+#ifndef CONFIG_WITH_VALUE_LENGTH
+  char *name;
+#endif
 
   beg = next_token (line);
+  line = parse_variable_definition (beg, &flavor);
+  if (!line)
+    return NULL;
+
+  end = line - (flavor == f_recursive ? 1 : 2);
   while (end > beg && isblank ((unsigned char)end[-1]))
     --end;
-  p = next_token (p);
-  v->value = p;
+  line = next_token (line);
+  v->value = line;
+  v->flavor = flavor;
 #ifdef CONFIG_WITH_VALUE_LENGTH
   v->value_alloc_len = ~(unsigned int)0;
-  v->value_length = eos != NULL ? eos - p : -1;
-  assert (eos == NULL || strchr (p, '\0') == eos);
+  v->value_length = eos != NULL ? eos - line : -1;
+  assert (eos == NULL || strchr (line, '\0') == eos);
 # ifdef CONFIG_WITH_RDONLY_VARIABLE_VALUE
   v->rdonly_val = 0;
 # endif
@@ -2340,20 +2804,16 @@ parse_variable_definition (struct variable *v, char *line, char *eos)
    from a makefile, an override directive, the environment with
    or without the -e switch, or the command line.
 
-   See the comments for parse_variable_definition().
+   See the comments for assign_variable_definition().
 
    If LINE was recognized as a variable definition, a pointer to its `struct
    variable' is returned.  If LINE is not a variable definition, NULL is
    returned.  */
 
 struct variable *
-#ifndef CONFIG_WITH_VALUE_LENGTH
-try_variable_definition (const struct floc *flocp, char *line,
+try_variable_definition (const struct floc *flocp, char *line
+                         IF_WITH_VALUE_LENGTH_PARAM(char *eos),
                          enum variable_origin origin, int target_var)
-#else
-try_variable_definition (const struct floc *flocp, char *line, char *eos,
-                         enum variable_origin origin, int target_var)
-#endif
 {
   struct variable v;
   struct variable *vp;
@@ -2364,13 +2824,13 @@ try_variable_definition (const struct floc *flocp, char *line, char *eos,
     v.fileinfo.filenm = 0;
 
 #ifndef CONFIG_WITH_VALUE_LENGTH
-  if (!parse_variable_definition (&v, line))
+  if (!assign_variable_definition (&v, line))
     return 0;
 
   vp = do_variable_definition (flocp, v.name, v.value,
                                origin, v.flavor, target_var);
 #else
-  if (!parse_variable_definition (&v, line, eos))
+  if (!assign_variable_definition (&v, line, eos))
     return 0;
 
   vp = do_variable_definition_2 (flocp, v.name, v.value, v.value_length,
@@ -2386,9 +2846,17 @@ try_variable_definition (const struct floc *flocp, char *line, char *eos,
   return vp;
 }
 
+#if defined (CONFIG_WITH_COMPILER) || defined (CONFIG_WITH_MAKE_STATS)
+static unsigned long var_stats_evalvals, var_stats_evalvaled;
+static unsigned long var_stats_expands, var_stats_expanded;
+#endif
+#ifdef CONFIG_WITH_COMPILER
+static unsigned long var_stats_expandprogs, var_stats_evalprogs;
+#endif
 #ifdef CONFIG_WITH_MAKE_STATS
 static unsigned long var_stats_changes, var_stats_changed;
 static unsigned long var_stats_reallocs, var_stats_realloced;
+static unsigned long var_stats_references, var_stats_referenced;
 static unsigned long var_stats_val_len, var_stats_val_alloc_len;
 static unsigned long var_stats_val_rdonly_len;
 #endif
@@ -2401,6 +2869,10 @@ print_variable (const void *item, void *arg)
   const struct variable *v = item;
   const char *prefix = arg;
   const char *origin;
+#ifdef KMK
+  const struct variable *alias = v;
+  RESOLVE_ALIAS_VARIABLE(v);
+#endif
 
   switch (v->origin)
     {
@@ -2436,18 +2908,77 @@ print_variable (const void *item, void *arg)
     }
   fputs ("# ", stdout);
   fputs (origin, stdout);
+  if (v->private_var)
+    fputs (" private", stdout);
+#ifndef KMK
   if (v->fileinfo.filenm)
     printf (_(" (from `%s', line %lu)"),
             v->fileinfo.filenm, v->fileinfo.lineno);
+#else  /* KMK */
+  if (alias->fileinfo.filenm)
+    printf (_(" (from '%s', line %lu)"),
+            alias->fileinfo.filenm, alias->fileinfo.lineno);
+  if (alias->aliased)
+    fputs (" aliased", stdout);
+  if (alias->alias)
+    printf (_(", alias for '%s'"), v->name);
+#endif /* KMK */
+
+#if defined (CONFIG_WITH_COMPILER) || defined (CONFIG_WITH_MAKE_STATS)
+  if (v->evalval_count != 0)
+    {
+# ifdef CONFIG_WITH_MAKE_STATS
+      printf (_(", %u evalvals (%llu ticks)"), v->evalval_count, v->cTicksEvalVal);
+# else
+      printf (_(", %u evalvals"), v->evalval_count);
+# endif
+      var_stats_evalvaled++;
+    }
+  var_stats_evalvals += v->evalval_count;
+
+  if (v->expand_count != 0)
+    {
+      printf (_(", %u expands"), v->expand_count);
+      var_stats_expanded++;
+    }
+  var_stats_expands += v->expand_count;
+
+# ifdef CONFIG_WITH_COMPILER
+  if (v->evalprog != 0)
+    {
+      printf (_(", evalprog"));
+      var_stats_evalprogs++;
+    }
+  if (v->expandprog != 0)
+    {
+      printf (_(", expandprog"));
+      var_stats_expandprogs++;
+    }
+# endif
+#endif
+
 #ifdef CONFIG_WITH_MAKE_STATS
   if (v->changes != 0)
+    {
       printf (_(", %u changes"), v->changes);
+      var_stats_changed++;
+    }
   var_stats_changes += v->changes;
-  var_stats_changed += (v->changes != 0);
+
   if (v->reallocs != 0)
+    {
       printf (_(", %u reallocs"), v->reallocs);
+      var_stats_realloced++;
+    }
   var_stats_reallocs += v->reallocs;
-  var_stats_realloced += (v->reallocs != 0);
+
+  if (v->references != 0)
+    {
+      printf (_(", %u references"), v->references);
+      var_stats_referenced++;
+    }
+  var_stats_references += v->references;
+
   var_stats_val_len += v->value_length;
   if (v->value_alloc_len)
     var_stats_val_alloc_len += v->value_alloc_len;
@@ -2461,12 +2992,20 @@ print_variable (const void *item, void *arg)
 
   /* Is this a `define'?  */
   if (v->recursive && strchr (v->value, '\n') != 0)
+#ifndef KMK /** @todo language feature for aliases */
     printf ("define %s\n%s\nendef\n", v->name, v->value);
+#else
+    printf ("define %s\n%s\nendef\n", alias->name, v->value);
+#endif
   else
     {
-      register char *p;
+      char *p;
 
+#ifndef KMK /** @todo language feature for aliases */
       printf ("%s %s= ", v->name, v->recursive ? v->append ? "+" : "" : ":");
+#else
+      printf ("%s %s= ", alias->name, v->recursive ? v->append ? "+" : "" : ":");
+#endif
 
       /* Check if the value is just whitespace.  */
       p = next_token (v->value);
@@ -2494,15 +3033,25 @@ print_variable (const void *item, void *arg)
 void
 print_variable_set (struct variable_set *set, char *prefix)
 {
+#if defined (CONFIG_WITH_COMPILER) || defined (CONFIG_WITH_MAKE_STATS)
+  var_stats_expands = var_stats_expanded = var_stats_evalvals
+    = var_stats_evalvaled = 0;
+#endif
+#ifdef CONFIG_WITH_COMPILER
+  var_stats_expandprogs = var_stats_evalprogs = 0;
+#endif
 #ifdef CONFIG_WITH_MAKE_STATS
   var_stats_changes = var_stats_changed = var_stats_reallocs
-      = var_stats_realloced = var_stats_val_len = var_stats_val_alloc_len
-      = var_stats_val_rdonly_len = 0;
+    = var_stats_realloced = var_stats_references = var_stats_referenced
+    = var_stats_val_len = var_stats_val_alloc_len
+    = var_stats_val_rdonly_len = 0;
+#endif
 
   hash_map_arg (&set->table, print_variable, prefix);
 
   if (set->table.ht_fill)
     {
+#ifdef CONFIG_WITH_MAKE_STATS
       unsigned long fragmentation;
 
       fragmentation = var_stats_val_alloc_len - (var_stats_val_len - var_stats_val_rdonly_len);
@@ -2526,10 +3075,34 @@ print_variable_set (struct variable_set *set, char *prefix)
                var_stats_realloced,
                (unsigned int)((100.0 * var_stats_realloced) / set->table.ht_fill),
                var_stats_reallocs);
-      }
-#else
-  hash_map_arg (&set->table, print_variable, prefix);
+
+      if (var_stats_referenced)
+        printf(_("#  referenced %5lu (%2u%%),       references %6lu\n"),
+               var_stats_referenced,
+               (unsigned int)((100.0 * var_stats_referenced) / set->table.ht_fill),
+               var_stats_references);
 #endif
+#if defined (CONFIG_WITH_COMPILER) || defined (CONFIG_WITH_MAKE_STATS)
+      if (var_stats_evalvals)
+        printf(_("#   evalvaled %5lu (%2u%%),    evalval calls %6lu\n"),
+               var_stats_evalvaled,
+               (unsigned int)((100.0 * var_stats_evalvaled) / set->table.ht_fill),
+               var_stats_evalvals);
+      if (var_stats_expands)
+        printf(_("#    expanded %5lu (%2u%%),          expands %6lu\n"),
+               var_stats_expanded,
+               (unsigned int)((100.0 * var_stats_expanded) / set->table.ht_fill),
+               var_stats_expands);
+#endif
+#ifdef CONFIG_WITH_COMPILER
+      if (var_stats_expandprogs || var_stats_evalprogs)
+        printf(_("#  eval progs %5lu (%2u%%),     expand progs %6lu (%2u%%)\n"),
+               var_stats_evalprogs,
+               (unsigned int)((100.0 * var_stats_evalprogs) / set->table.ht_fill),
+               var_stats_expandprogs,
+               (unsigned int)((100.0 * var_stats_expandprogs) / set->table.ht_fill));
+#endif
+      }
 
   fputs (_("# variable set hash-table stats:\n"), stdout);
   fputs ("# ", stdout);
@@ -2610,7 +3183,7 @@ sync_Path_environment (void)
    * Create something WINDOWS32 world can grok
    */
   convert_Path_to_windows32 (path, ';');
-  environ_path = xstrdup (concat ("PATH", "=", path));
+  environ_path = xstrdup (concat (3, "PATH", "=", path));
   putenv (environ_path);
   free (path);
 }

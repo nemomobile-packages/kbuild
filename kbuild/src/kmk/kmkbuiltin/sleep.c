@@ -1,4 +1,4 @@
-/* $Id: sleep.c 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * kmk_sleep - suspend execution for an interval of time.
  */

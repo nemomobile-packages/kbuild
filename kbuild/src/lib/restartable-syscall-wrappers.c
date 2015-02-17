@@ -1,4 +1,4 @@
-/* $Id: restartable-syscall-wrappers.c 2507 2011-07-24 15:42:39Z bird $ */
+/* $Id$ */
 /** @file
  * restartable-syscall-wrappers.c - Workaround for annoying S11 "features".
  *

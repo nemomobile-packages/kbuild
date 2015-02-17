@@ -10,7 +10,7 @@ The anatomy of a kBuild Makefile
 
 A typical makefile::
 
-    # $Id: QuickReference-kBuild.txt 2345 2009-04-19 23:47:42Z bird $
+    # $Id$
     ## @file
     # Makefile description.
     #
@@ -270,7 +270,7 @@ target list table above.
 
 -----
 
-:Status: $Id: QuickReference-kBuild.txt 2345 2009-04-19 23:47:42Z bird $
+:Status: $Id$
 :Copyright: Copyright (c) 2009 knut st. osmundsen
 
 

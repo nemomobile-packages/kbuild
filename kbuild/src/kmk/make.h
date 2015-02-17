@@ -1,7 +1,7 @@
 /* Miscellaneous global declarations and portability cruft for GNU Make.
 Copyright (C) 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997,
-1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007 Free Software
-Foundation, Inc.
+1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
+2010 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -23,28 +23,25 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #undef  HAVE_CONFIG_H
 #define HAVE_CONFIG_H 1
 
+/* Specify we want GNU source code.  This must be defined before any
+   system headers are included.  */
+
+#define _GNU_SOURCE 1
+
 /* AIX requires this to be the first thing in the file.  */
-#ifndef __GNUC__
-# if HAVE_ALLOCA_H
-#  include <alloca.h>
-# else
-#  ifdef _AIX
+#if HAVE_ALLOCA_H
+# include <alloca.h>
+#else
+# ifdef _AIX
  #pragma alloca
-#  else
+# else
+#  if !defined(__GNUC__) && !defined(WINDOWS32)
 #   ifndef alloca /* predefined by HP cc +Olibcalls */
 char *alloca ();
 #   endif
 #  endif
 # endif
-#elif defined(__sun__) && defined (HAVE_ALLOCA_H) /* bird: kill warnings. */
-# include <alloca.h>
 #endif
-
-
-/* Specify we want GNU source code.  This must be defined before any
-   system headers are included.  */
-
-#define _GNU_SOURCE 1
 
 
 #ifdef  CRAY
@@ -216,7 +213,7 @@ extern unsigned long make_stats_ht_collisions;
 
 # ifdef __APPLE__
 #  include <malloc/malloc.h>
-#  define SIZE_OF_HEAP_BLOCK(ptr)   malloc_good_size(ptr)
+#  define SIZE_OF_HEAP_BLOCK(ptr)   malloc_size(ptr)
 
 # elif defined(__linux__) /* glibc */
 #  include <malloc.h>
@@ -238,6 +235,41 @@ extern unsigned long make_stats_ht_collisions;
 # define MAKE_STATS_2(expr) do { } while (0)
 # define MAKE_STATS(expr)   do { } while (0)
 #endif
+
+/* bird - start */
+#ifdef _MSC_VER
+# include <intrin.h>
+# define CURRENT_CLOCK_TICK() __rdtsc()
+#else
+# define CURRENT_CLOCK_TICK() 0
+#endif
+
+#define COMMA ,
+#ifdef CONFIG_WITH_VALUE_LENGTH
+# define IF_WITH_VALUE_LENGTH(a_Expr)           a_Expr
+# define IF_WITH_VALUE_LENGTH_PARAM(a_Expr)     , a_Expr
+#else
+# define IF_WITH_VALUE_LENGTH(a_Expr)
+# define IF_WITH_VALUE_LENGTH_PARAM(a_Expr)
+#endif
+
+#ifdef CONFIG_WITH_ALLOC_CACHES
+# define IF_WITH_ALLOC_CACHES(a_Expr)           a_Expr
+# define IF_WITH_ALLOC_CACHES_PARAM(a_Expr)     , a_Expr
+#else
+# define IF_WITH_ALLOC_CACHES(a_Expr)
+# define IF_WITH_ALLOC_CACHES_PARAM(a_Expr)
+#endif
+
+#ifdef CONFIG_WITH_COMMANDS_FUNC
+# define IF_WITH_COMMANDS_FUNC(a_Expr)          a_Expr
+# define IF_WITH_COMMANDS_FUNC_PARAM(a_Expr)    , a_Expr
+#else
+# define IF_WITH_COMMANDS_FUNC(a_Expr)
+# define IF_WITH_COMMANDS_FUNC_PARAM(a_Expr)
+#endif
+
+/* bird - end */
 
 
 #ifndef CHAR_BIT
@@ -362,23 +394,23 @@ char *strsignal (int signum);
    host does not conform to POSIX.  */
 #define ISDIGIT(c) ((unsigned) (c) - '0' <= 9)
 
-#ifndef iAPX286
-# define streq(a, b) \
+/* Test if two strings are equal. Is this worthwhile?  Should be profiled.  */
+#define streq(a, b) \
    ((a) == (b) || \
     (*(a) == *(b) && (*(a) == '\0' || !strcmp ((a) + 1, (b) + 1))))
-# ifdef HAVE_CASE_INSENSITIVE_FS
-#  define strieq(a, b) \
+
+/* Test if two strings are equal, but match case-insensitively on systems
+   which have case-insensitive filesystems.  Should only be used for
+   filenames!  */
+#ifdef HAVE_CASE_INSENSITIVE_FS
+# define patheq(a, b) \
     ((a) == (b) \
      || (tolower((unsigned char)*(a)) == tolower((unsigned char)*(b)) \
          && (*(a) == '\0' || !strcasecmp ((a) + 1, (b) + 1))))
-# else
-#  define strieq(a, b) streq(a, b)
-# endif
 #else
-/* Buggy compiler can't handle this.  */
-# define streq(a, b) (strcmp ((a), (b)) == 0)
-# define strieq(a, b) (strcmp ((a), (b)) == 0)
+# define patheq(a, b) streq(a, b)
 #endif
+
 #define strneq(a, b, l) (strncmp ((a), (b), (l)) == 0)
 
 #if (defined(__GNUC__) || defined(ENUM_BITFIELDS)) && !defined(NO_ENUM_BITFIELDS)
@@ -424,7 +456,7 @@ char *strsignal (int signum);
 # define kill(_pid,_sig) w32_kill((_pid),(_sig))
 
 void sync_Path_environment (void);
-int w32_kill (int pid, int sig);
+int w32_kill (pid_t pid, int sig);
 char *end_of_token_w32 (const char *s, char stopchar);
 int find_and_set_default_shell (const char *token);
 
@@ -434,6 +466,14 @@ extern int no_default_sh_exe;
 /* is default_shell unixy? */
 extern int unixy_shell;
 #endif  /* WINDOWS32 */
+
+#if defined(HAVE_SYS_RESOURCE_H) && defined(HAVE_GETRLIMIT) && defined(HAVE_SETRLIMIT)
+# define SET_STACK_SIZE
+#endif
+#ifdef SET_STACK_SIZE
+# include <sys/resource.h>
+struct rlimit stack_limit;
+#endif
 
 struct floc
   {
@@ -473,6 +513,7 @@ typedef uint64_t big_uint;
 #endif
 
 #if HAVE_ANSI_COMPILER && USE_VARIADIC && HAVE_STDARG_H
+const char *concat (unsigned int, ...);
 void message (int prefix, const char *fmt, ...)
               __attribute__ ((__format__ (__printf__, 2, 3)));
 void error (const struct floc *flocp, const char *fmt, ...)
@@ -480,6 +521,7 @@ void error (const struct floc *flocp, const char *fmt, ...)
 void fatal (const struct floc *flocp, const char *fmt, ...)
                    __attribute__ ((noreturn, __format__ (__printf__, 2, 3)));
 #else
+const char *concat ();
 void message ();
 void error ();
 void fatal ();
@@ -489,17 +531,20 @@ void die (int) __attribute__ ((noreturn));
 void log_working_directory (int);
 void pfatal_with_name (const char *) __attribute__ ((noreturn));
 void perror_with_name (const char *, const char *);
-char *savestring (const char *, unsigned int);
-char *concat (const char *, const char *, const char *);
 void *xmalloc (unsigned int);
+void *xcalloc (unsigned int);
 void *xrealloc (void *, unsigned int);
 char *xstrdup (const char *);
+char *xstrndup (const char *, unsigned int);
 #ifdef CONFIG_WITH_PRINT_STATS_SWITCH
 void print_heap_stats (void);
 #endif
 char *find_next_token (const char **, unsigned int *);
 char *next_token (const char *);
 char *end_of_token (const char *);
+#ifdef KMK
+char *find_next_token_eos (const char **ptr, const char *eos, unsigned int *lengthptr);
+#endif
 #ifndef CONFIG_WITH_VALUE_LENGTH
 void collapse_continuations (char *);
 #else
@@ -548,7 +593,8 @@ void install_default_implicit_rules (void);
 
 void build_vpath_lists (void);
 void construct_vpath_list (char *pattern, char *dirpath);
-const char *vpath_search (const char *file, FILE_TIMESTAMP *mtime_ptr);
+const char *vpath_search (const char *file, FILE_TIMESTAMP *mtime_ptr,
+                          unsigned int* vpath_index, unsigned int* path_index);
 int gpath_search (const char *file, unsigned int len);
 
 void construct_include_path (const char **arg_dirs);
@@ -598,7 +644,9 @@ void alloccache_free (struct alloccache *cache, void *item);
 MY_INLINE void *
 alloccache_alloc (struct alloccache *cache)
 {
-  struct alloccache_free_ent *f = cache->free_head;
+  struct alloccache_free_ent *f;
+# ifndef CONFIG_WITH_ALLOCCACHE_DEBUG
+  f = cache->free_head;
   if (f)
     cache->free_head = f->next;
   else if (cache->free_start != cache->free_end)
@@ -607,6 +655,7 @@ alloccache_alloc (struct alloccache *cache)
       cache->free_start += cache->size;
     }
   else
+# endif
     f = alloccache_alloc_grow (cache);
   MAKE_STATS(cache->alloc_count++;);
   return f;
@@ -691,6 +740,17 @@ int strcasecmp (const char *s1, const char *s2);
 # endif
 #endif
 
+#if !HAVE_STRNCASECMP
+# if HAVE_STRNICMP
+#  define strncasecmp strnicmp
+# elif HAVE_STRNCMPI
+#  define strncasecmp strncmpi
+# else
+/* Create our own, in misc.c */
+int strncasecmp (const char *s1, const char *s2, int n);
+# endif
+#endif
+
 extern const struct floc *reading_file;
 extern const struct floc **expanding_var;
 
@@ -704,6 +764,8 @@ extern int env_overrides, no_builtin_rules_flag, no_builtin_variables_flag;
 extern int print_version_flag, print_directory_flag, check_symlink_flag;
 extern int warn_undefined_variables_flag, posix_pedantic, not_parallel;
 extern int second_expansion, clock_skew_detected, rebuilding_makefiles;
+extern int one_shell;
+
 #ifdef CONFIG_WITH_2ND_TARGET_EXPANSION
 extern int second_target_expansion;
 #endif

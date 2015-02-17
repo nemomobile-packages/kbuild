@@ -1,4 +1,4 @@
-# $Id: W2K3DDKAMD64.kmk 2413 2010-09-11 17:43:04Z bird $
+# $Id$
 ## @file
 # kBuild SDK - The Microsoft Windows 2003 DDK, targeting amd64.
 #

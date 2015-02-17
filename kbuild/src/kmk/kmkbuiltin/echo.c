@@ -38,7 +38,7 @@ static char const copyright[] =
 static char sccsid[] = "@(#)echo.c	8.1 (Berkeley) 5/31/93";
 #endif /* not lint */
 #include <sys/cdefs.h>
-//__FBSDID("$FreeBSD: src/bin/echo/echo.c,v 1.17 2004/04/06 20:06:46 markm Exp $");
+/*__FBSDID("$FreeBSD: src/bin/echo/echo.c,v 1.17 2004/04/06 20:06:46 markm Exp $");*/
 #endif
 
 #include "config.h"
@@ -72,11 +72,19 @@ static void
 errexit(const char *prog, const char *reason)
 {
 	char *errstr = strerror(errno);
+#ifdef _MSC_VER
+	int doserrno = _doserrno;
+       char szDosErr[48];
+       sprintf(szDosErr, " (doserrno=%d)", doserrno);
+#endif
 	write(STDERR_FILENO, prog, strlen(prog));
 	write(STDERR_FILENO, ": ", 2);
 	write(STDERR_FILENO, reason, strlen(reason));
 	write(STDERR_FILENO, ": ", 2);
 	write(STDERR_FILENO, errstr, strlen(errstr));
+#ifdef _MSC_VER
+	write(STDERR_FILENO, szDosErr, strlen(szDosErr));
+#endif
 	write(STDERR_FILENO, "\n", 1);
 }
 

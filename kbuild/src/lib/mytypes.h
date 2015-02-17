@@ -1,4 +1,4 @@
-/* $Id: mytypes.h 2442 2011-07-06 12:19:16Z bird $ */
+/* $Id$ */
 /** @file
  * mytypes - wrapper that ensures the necessary uintXY_t types are defined.
  */

@@ -1,4 +1,4 @@
-/* $Id: dummy.c 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * Tests - Dummy test program.
  */

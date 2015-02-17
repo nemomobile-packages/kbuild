@@ -69,6 +69,7 @@ extern APIRET
 #endif
 
 
+
 /*
  * Shell variables.
  */
@@ -150,10 +151,6 @@ const struct varinit varinit[] = {
 	  NULL },
 	{ offsetof(shinstance, vpath),	VSTRFIXED|VTEXTFIXED,		"PATH=" _PATH_DEFPATH,
 	  changepath },
-#ifdef _MSC_VER
-	{ offsetof(shinstance, vpath2),	VSTRFIXED|VTEXTFIXED,		"Path=",
-	  changepath },
-#endif
 	/*
 	 * vps1 depends on uid
 	 */
@@ -361,6 +358,19 @@ setvareq(shinstance *psh, char *s, int flags)
 	struct var *vp, **vpp;
 	int nlen;
 
+#if defined(_MSC_VER) || defined(_WIN32)
+	/* On Windows PATH is often spelled 'Path', correct this here.  */
+	if (   s[0] == 'P'
+	    && s[1] == 'a'
+	    && s[2] == 't'
+	    && s[3] == 'h'
+	    && (s[4] == '\0' || s[4] == '=') ) {
+		s[1] = 'A';
+		s[2] = 'T';
+		s[3] = 'H';
+	}
+#endif
+
 	if (aflag(psh))
 		flags |= VEXPORT;
 	vp = find_var(psh, s, &vpp, &nlen);
@@ -397,6 +407,7 @@ setvareq(shinstance *psh, char *s, int flags)
 	/* not found */
 	if (flags & VNOSET)
 		return;
+
 	vp = ckmalloc(psh, sizeof (*vp));
 	vp->flags = flags & ~VNOFUNC;
 	vp->text = s;
