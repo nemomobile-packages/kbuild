@@ -1,4 +1,4 @@
-# $Id: select 2413 2010-09-11 17:43:04Z bird $                                        -*-perl-*-
+# $Id$                                        -*-perl-*-
 ## @file
 # $(select when1-cond, when1-body[,whenN-cond, whenN-body])
 #

@@ -1,4 +1,4 @@
-/* $Id: dummy_defined_X.c 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * Tests - Dummy test program checking that X == 42, possibly doing this via y.
  */

@@ -1,4 +1,4 @@
-/* $Id: darwin.c 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * Missing BSD functions on Darwin / Mac OS X.
  */
@@ -28,6 +28,7 @@
 *******************************************************************************/
 #include "config.h"
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 

@@ -1,4 +1,4 @@
-/* $Id: tstDump.c 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * tstDump - dump inherited file handle information on Windows.
  */

@@ -1,6 +1,6 @@
 /* Windows version of dirent.h
 Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-2007 Free Software Foundation, Inc.
+2007, 2008, 2009, 2010 Free Software Foundation, Inc.
 This file is part of GNU Make.
 
 GNU Make is free software; you can redistribute it and/or modify it under the
@@ -17,6 +17,12 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #ifndef _DIRENT_H
 #define _DIRENT_H
+
+#ifdef KMK
+# include <windows.h>
+# include "nt/ntdir.h"
+
+#else /* !KMK */
 
 #ifdef __MINGW32__
 # include <windows.h>
@@ -57,4 +63,5 @@ int telldir(DIR *);
 void seekdir(DIR *, long);
 
 #endif  /* !__MINGW32__ */
+#endif  /* !KMK */
 #endif

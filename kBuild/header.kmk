@@ -1,10 +1,10 @@
-# $Id: header.kmk 2537 2011-08-02 19:44:43Z bird $
+# $Id$
 ## @file
 # kBuild - File included at top of a makefile.
 #
 
 #
-# Copyright (c) 2004-2010 knut st. osmundsen <bird-kBuild-spamx@anduin.net>
+# Copyright (c) 2004-2015 knut st. osmundsen <bird-kBuild-spam-xiv@anduin.net>
 #
 # This file is part of kBuild.
 #
@@ -79,7 +79,7 @@ endif
 # The revision in which this file was last modified.
 # This can be useful when using development versions of kBuild.
 #
-KMK_REVISION := $(patsubst %:,,  $Rev: 2537 $  )
+KMK_REVISION := $(patsubst %:,,  $Rev$  )
 
 
 #
@@ -188,8 +188,10 @@ KBUILD_BLD_TYPES := release profile debug
 # this keyword namespace is shared between OSes, architectures, cpus and
 # build types. (PORTME)
 #
-KBUILD_OSES   := darwin dos dragonfly freebsd l4 linux netbsd nt openbsd os2 solaris win os-agnostic
-KBUILD_ARCHES := x86 amd64 sparc32 sparc64 s390 s390x ppc32 ppc64 mips32 mips64 ia64 hppa32 hppa64 arm alpha
+KBUILD_OSES      := darwin dos dragonfly freebsd haiku l4 linux netbsd nt openbsd os2 solaris win os-agnostic
+KBUILD_ARCHES    := x86 amd64 sparc32 sparc64 s390 s390x ppc32 ppc64 mips32 mips64 ia64 hppa32 hppa64 arm alpha
+KBUILD_ARCHES_64 := amd64 sparc64 s390x ppc64 mips64 ia64 hppa64 alpha
+KBUILD_ARCHES_32 := x86 sparc32 s390 ppc32 mips32 hppa32 arm
 
 
 #
@@ -469,42 +471,55 @@ PATH_SYS = $(error kBuild: PATH_SYS is obsoleted in kBuild 0.1.2. Use PATH_STAGE
 PATH_DOC = $(error kBuild: PATH_DOC is obsoleted in kBuild 0.1.2. Use PATH_STAGE_DOC or PATH_INST_DOC instead)
 
 # Development tool tree.
-KBUILD_DEVTOOLS      = $(if $(PATH_DEVTOOLS),$(PATH_DEVTOOLS),$(PATH_ROOT)/tools)
-KBUILD_DEVTOOLS_TRG  = $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).$(KBUILD_TARGET_ARCH)
-KBUILD_DEVTOOLS_HST  = $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).$(KBUILD_HOST_ARCH)
+ifndef KBUILD_DEVTOOLS
+ ifeq ($(PATH_DEVTOOLS),)
+  KBUILD_DEVTOOLS    = $(PATH_ROOT)/tools
+ else  
+  KBUILD_DEVTOOLS   := $(PATH_DEVTOOLS)
+ endif 
+endif 
+KBUILD_DEVTOOLS_TRG ?= $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).$(KBUILD_TARGET_ARCH)
+KBUILD_DEVTOOLS_HST ?= $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).$(KBUILD_HOST_ARCH)
 
 if1of ($(KBUILD_TARGET_ARCH), amd64 hppa64 mips64 ppc64 s390x sparc64)
  ifeq ($(KBUILD_TARGET_ARCH),amd64)
-  KBUILD_DEVTOOLS_TRG_ALT = $(PATH_DEVTOOLS)/$(KBUILD_TARGET).x86
+  KBUILD_DEVTOOLS_TRG_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).x86
  else ifeq ($(KBUILD_TARGET_ARCH),hppa64)
-  KBUILD_DEVTOOLS_TRG_ALT = $(PATH_DEVTOOLS)/$(KBUILD_TARGET).hppa32
+  KBUILD_DEVTOOLS_TRG_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).hppa32
  else ifeq ($(KBUILD_TARGET_ARCH),mips64)
-  KBUILD_DEVTOOLS_TRG_ALT = $(PATH_DEVTOOLS)/$(KBUILD_TARGET).mips32
+  KBUILD_DEVTOOLS_TRG_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).mips32
  else ifeq ($(KBUILD_TARGET_ARCH),ppc64)
-  KBUILD_DEVTOOLS_TRG_ALT = $(PATH_DEVTOOLS)/$(KBUILD_TARGET).ppc32
+  KBUILD_DEVTOOLS_TRG_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).ppc32
  else ifeq ($(KBUILD_TARGET_ARCH),s390x)
-  KBUILD_DEVTOOLS_TRG_ALT = $(PATH_DEVTOOLS)/$(KBUILD_TARGET).s390
+  KBUILD_DEVTOOLS_TRG_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).s390
  else ifeq ($(KBUILD_TARGET_ARCH),sparc64)
-  KBUILD_DEVTOOLS_TRG_ALT = $(PATH_DEVTOOLS)/$(KBUILD_TARGET).sparc32
+  KBUILD_DEVTOOLS_TRG_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_TARGET).sparc32
  endif
 endif
 
 if1of ($(KBUILD_HOST_ARCH), amd64 hppa64 mips64 ppc64 s390x sparc64)
  ifeq ($(KBUILD_HOST_ARCH),amd64)
-  KBUILD_DEVTOOLS_HST_ALT = $(PATH_DEVTOOLS)/$(KBUILD_HOST).x86
+  KBUILD_DEVTOOLS_HST_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).x86
  else ifeq ($(KBUILD_HOST_ARCH),hppa64)
-  KBUILD_DEVTOOLS_HST_ALT = $(PATH_DEVTOOLS)/$(KBUILD_HOST).hppa32
+  KBUILD_DEVTOOLS_HST_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).hppa32
  else ifeq ($(KBUILD_HOST_ARCH),mips64)
-  KBUILD_DEVTOOLS_HST_ALT = $(PATH_DEVTOOLS)/$(KBUILD_HOST).mips32
+  KBUILD_DEVTOOLS_HST_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).mips32
  else ifeq ($(KBUILD_HOST_ARCH),ppc64)
-  KBUILD_DEVTOOLS_HST_ALT = $(PATH_DEVTOOLS)/$(KBUILD_HOST).ppc32
+  KBUILD_DEVTOOLS_HST_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).ppc32
  else ifeq ($(KBUILD_HOST_ARCH),s390x)
-  KBUILD_DEVTOOLS_HST_ALT = $(PATH_DEVTOOLS)/$(KBUILD_HOST).s390
+  KBUILD_DEVTOOLS_HST_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).s390
  else ifeq ($(KBUILD_HOST_ARCH),sparc64)
-  KBUILD_DEVTOOLS_HST_ALT = $(PATH_DEVTOOLS)/$(KBUILD_HOST).sparc32
+  KBUILD_DEVTOOLS_HST_ALT ?= $(KBUILD_DEVTOOLS)/$(KBUILD_HOST).sparc32
  endif
 endif
 
+# Deprecated legacy names.
+PATH_DEVTOOLS         ?= $(KBUILD_DEVTOOLS)
+PATH_DEVTOOLS_TRG     ?= $(KBUILD_DEVTOOLS_TRG)
+PATH_DEVTOOLS_BLD     ?= $(KBUILD_DEVTOOLS_TRG)
+PATH_DEVTOOLS_TRG_ALT ?= $(KBUILD_DEVTOOLS_TRG_ALT)
+PATH_DEVTOOLS_HST     ?= $(KBUILD_DEVTOOLS_HST)
+PATH_DEVTOOLS_HST_ALT ?= $(KBUILD_DEVTOOLS_HST_ALT)
 
 # KBUILD_PATH / PATH_KBUILD is determined by kmk.
 ifndef KBUILD_PATH
@@ -961,10 +976,7 @@ PROPS_SINGLE := $(PROPS_TOOLS) TEMPLATE INSTTYPE INST STAGE NOINST BLD_TYPE BLD_
 	MODE UID GID LD_DEBUG DEBUG_INSTTYPE DEBUG_INST DEBUG_STAGE
 ## PROPS_SINGLE_LNK
 # Subset of PROPS_SINGLE which applies to all linkable targets.
-PROPS_SINGLE_LNK := TOOL TEMPLATE CTOOL CXXTOOL OBJCTOOL OBJCXXTOOL ASTOOL RCTOOL \
-	INST NOINST BLD_TYPE BLD_TRG BLD_TRG_ARCH BLD_TRG_CPU \
-	OBJSUFF COBJSUFF CXXOBJSUFF OBJCOBJSUFF OBJCXXOBJSUFF ASOBJSUFF RCOBJSUFF \
-	MODE UID GID LD_DEBUG DEBUG_INSTTYPE DEBUG_INST DEBUG_STAGE
+PROPS_SINGLE_LNK := $(filter-out FETCHTOOL UNPACKTOOL PATCHTOOL FETCHDIR, $(PROPS_SINGLE))
 
 ## PROPS_DEFERRED
 # This list of non-accumulative target properties which are or may be
@@ -992,15 +1004,7 @@ PROPS_ACCUMULATE_R := \
 	FETCHFLAGS UNPACKFLAGS PATCHFLAGS
 ## PROPS_ACCUMULATE_R_LNK
 # Subset of PROPS_ACCUMULATE_R which applies to all linkable targets.
-PROPS_ACCUMULATE_R_LNK := \
-	DEPS LNK_DEPS ORDERDEPS LNK_ORDERDEPS DEFS \
-	CFLAGS CDEFS \
-	CXXFLAGS CXXDEFS \
-	OBJCFLAGS OBJCDEFS \
-	OBJCXXFLAGS OBJCXXDEFS \
-	ASFLAGS ASDEFS \
-	RCFLAGS RCDEFS \
-	IDFLAGS IFFLAGS ISFLAGS
+PROPS_ACCUMULATE_R_LNK := $(filter-out ARFLAGS LDFLAGS EXEC_IFFLAGS FETCHFLAGS UNPACKFLAGS PATCHFLAGS, $(PROPS_ACCUMULATE_R))
 
 ## PROPS_ACCUMULATE
 # The list of accumulative target properties where the left most value/flag
@@ -1014,10 +1018,7 @@ PROPS_ACCUMULATE_L := \
 	DIRS BLDDIRS CLEAN
 ## PROPS_ACCUMULATE_L_LNK
 # Subset of PROPS_ACCUMULATE_L which applies to all linkable targets.
-PROPS_ACCUMULATE_L_LNK := \
-	SDKS USES SOURCES SRC_HANDLERS INTERMEDIATES \
-	INCS CINCS CXXINCS OBJCINCS OBJCXXINCS ASINCS RCINCS \
-	BLDDIRS CLEAN
+PROPS_ACCUMULATE_L_LNK := $(filter-out LIBS LIBPATH EXEC_SOURCES DIRS, $(PROPS_ACCUMULATE_L))
 
 ## PROPS_ALL
 # List of all the properties.
@@ -1065,7 +1066,7 @@ PROPS_MISCBINS_ACCUMULATE_L  := $(PROPS_ACCUMULATE_L_LNK) LIBS LIBPATH
 
 ## @name Properties valid on installs (INSTALLS)
 ## @{
-PROPS_INSTALLS_SINGLE        := TOOL TEMPLATE INST NOINST BLD_TYPE BLD_TRG BLD_TRG_ARCH BLD_TRG_CPU MODE UID GID
+PROPS_INSTALLS_SINGLE        := TOOL TEMPLATE INSTTYPE INST STAGE NOINST BLD_TYPE BLD_TRG BLD_TRG_ARCH BLD_TRG_CPU MODE UID GID
 PROPS_INSTALLS_DEFERRED      := INSTFUN INSTALLER PRE_FILE_CMDS POST_FILE_CMDS PRE_SYMLINK_CMDS POST_SYMLINK_CMDS \
 	PRE_DIRECTORY_CMDS POST_DIRECTORY_CMDS
 PROPS_INSTALLS_ACCUMULATE_R  := DEPS ORDERDEPS GOALS INST_ONLY_GOALS STAGE_ONLY_GOALS IFFLAGS EXEC_IFFLAGS
@@ -1268,6 +1269,75 @@ endif
 
 
 #
+# Library path searching hints (target OS + arch).
+#
+# 	 KBUILD_LIB_SEARCH_SUBS  - Subdirs typically containing the right libraries.
+#    KBUILD_LIB_SEARCH_ROOTS - Roots to search for library subdirs.
+#    KBUILD_LIB_SEARCH_PATHS - ROOTS + SUBS.
+#
+ifeq ($(KBUILD_TARGET),darwin)
+ KBUILD_LIB_SEARCH_ROOTS := \
+	/usr/ \
+	/Developer/usr/
+ KBUILD_LIB_SEARCH_SUBS  := lib/
+
+else if1of ($(KBUILD_TARGET), freebsd netbsd openbsd dragonfly)
+ KBUILD_LIB_SEARCH_ROOTS := \
+	/ \
+	/usr/ \
+	/usr/local/
+ KBUILD_LIB_SEARCH_SUBS := lib/
+
+else ifeq ($(KBUILD_TARGET),linux)
+ ifeq ($(realpath /bin),/usr/bin)
+  KBUILD_LIB_SEARCH_ROOTS := \
+  	/usr/ \
+  	/ \
+  	/usr/local/
+ else
+  KBUILD_LIB_SEARCH_ROOTS := \
+  	/ \
+  	/usr/ \
+  	/usr/local/
+ endif
+ ifeq ($(KBUILD_TARGET_ARCH),amd64)
+  KBUILD_LIB_SEARCH_SUBS := \
+	lib/x86_64-linux-gnu/ \
+	lib64/ \
+	lib/
+ else ifeq ($(KBUILD_TARGET_ARCH),x86)
+  KBUILD_LIB_SEARCH_SUBS := \
+	lib/i686-linux-gnu/ \
+	lib/i386-linux-gnu/ \
+	lib32/ \
+	lib/
+ else
+  KBUILD_LIB_SEARCH_SUBS := lib/
+ endif
+
+else ifeq ($(KBUILD_TARGET),solaris)
+ KBUILD_LIB_SEARCH_ROOTS := \
+	/ \
+	/usr/ \
+	/usr/sfw/ \
+	/usr/local/ \
+	/sw/
+ ifeq ($(KBUILD_TARGET_ARCH),amd64)
+  KBUILD_LIB_SEARCH_SUBS := lib/amd64/ lib/
+ else ifeq ($(KBUILD_TARGET_ARCH),sparc64)
+  KBUILD_LIB_SEARCH_SUBS := lib/sparcv9/ lib/
+ else
+  KBUILD_LIB_SEARCH_SUBS := lib/
+ endif
+
+else
+ KBUILD_LIB_SEARCH_SUBS  :=
+ KBUILD_LIB_SEARCH_ROOTS :=
+endif
+KBUILD_LIB_SEARCH_PATHS  := $(foreach root, $(KBUILD_LIB_SEARCH_ROOTS), $(addprefix $(root),$(KBUILD_LIB_SEARCH_SUBS)))
+
+
+#
 # This is how we find the closest config.kmk.
 # It's a little hacky but I think it works fine.
 #
@@ -1341,6 +1411,14 @@ endif
 PATH_$(y)_$(x) := $(val)
 endef
 $(foreach y, INST STAGE, $(foreach x, $(KBUILD_INST_PATHS), $(evalcall def_kbuild_finalize_inst)))
+
+# No abspath for devtools since they might've been referenced already and we
+# don't want conflicting variable expansions.
+KBUILD_DEVTOOLS         := $(KBUILD_DEVTOOLS)
+KBUILD_DEVTOOLS_TRG     := $(KBUILD_DEVTOOLS_TRG)
+KBUILD_DEVTOOLS_TRG_ALT := $(KBUILD_DEVTOOLS_TRG_ALT)
+KBUILD_DEVTOOLS_HST     := $(KBUILD_DEVTOOLS_HST)
+KBUILD_DEVTOOLS_HST_ALT := $(KBUILD_DEVTOOLS_HST_ALT)
 
 
 #
@@ -1488,6 +1566,29 @@ endif
 
 
 #
+# An internal define used by subheader.kmk and subfooter.kmk.
+# We keep them here to avoid redefining them for each sub-makefile.
+#
+define def_subfooter_header_target_pass
+ ifndef $(target)_PATH
+  ifndef $(target)_DEFPATH
+   $(target)_DEFPATH := $(PATH_SUB_CURRENT)
+  endif
+  $(call KB_FN_ASSIGN_DEPRECATED,$(target)_PATH,$($(target)_DEFPATH), $(target)_DEFPATH)
+ else ifndef $(target)_DEFPATH
+  $(target)_DEFPATH := $($(target)_PATH)
+ endif
+ ifndef $(target)_MAKEFILE
+  $(target)_MAKEFILE := $(MAKEFILE_CURRENT)
+ endif
+ ifndef $(target)_0_OUTDIR
+  $(target)_0_OUTDIR := $(call TARGET_PATH,$(target))
+  $(call KB_FN_ASSIGN_DEPRECATED,PATH_$(target),$($(target)_0_OUTDIR), $(target)_0_OUTDIR)
+ endif
+endef
+
+
+#
 # Validate any KBUILD_BLD_TYPES additions and finally the KBUILD_TYPE.
 #
 if1of ($(KBUILD_BLD_TYPES), $(KBUILD_OSES))
@@ -1512,6 +1613,5 @@ endif
 
 # end-of-file-content
 __header_kmk__ := 1
-endif # __header_kmk__
-
+endif # !__header_kmk__
 

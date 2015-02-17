@@ -1,4 +1,4 @@
-/* $Id: os2fake-win.c 2243 2009-01-10 02:24:02Z bird $
+/* $Id$
  *
  * OS/2 Fake library for Win32.
  *

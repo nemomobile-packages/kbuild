@@ -1,4 +1,4 @@
-/* $Id: fastdep.c 2413 2010-09-11 17:43:04Z bird $
+/* $Id$
  *
  * Fast dependents. (Fast = Quick and Dirty!)
  *

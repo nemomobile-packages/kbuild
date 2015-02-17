@@ -1,4 +1,4 @@
-# $Id: testcase-2ndtargetexp.kmk 2413 2010-09-11 17:43:04Z bird $
+# $Id$
 ## @file
 # kBuild - testcase for the 2nd target expansion feature.
 #

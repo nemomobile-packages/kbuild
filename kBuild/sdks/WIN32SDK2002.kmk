@@ -1,4 +1,4 @@
-# $Id: WIN32SDK2002.kmk 2413 2010-09-11 17:43:04Z bird $
+# $Id$
 ## @file
 # kBuild SDK - Windows Platform SDK (from ~2002), targeting x86.
 #              Differs in that it has ddraw.lib and dxguid.lib.

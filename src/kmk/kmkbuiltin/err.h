@@ -1,4 +1,4 @@
-/* $Id: err.h 2413 2010-09-11 17:43:04Z bird $ */
+/* $Id$ */
 /** @file
  * Override err.h stuff so we get the program names right.
  */

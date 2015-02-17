@@ -1,4 +1,4 @@
-/* $Id: shthread.c 2498 2011-07-22 12:05:57Z bird $ */
+/* $Id$ */
 /** @file
  *
  * Shell Thread Management.

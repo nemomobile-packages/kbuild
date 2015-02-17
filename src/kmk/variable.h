@@ -17,6 +17,9 @@ You should have received a copy of the GNU General Public License along with
 this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "hash.h"
+#ifdef CONFIG_WITH_COMPILER
+# include "kmk_cc_exec.h"
+#endif
 
 /* Codes in a variable definition saying where the definition came from.
    Increasing numeric values signify less-overridable definitions.  */
@@ -81,11 +84,17 @@ struct variable
     unsigned int exportable:1;  /* Nonzero if the variable _could_ be
                                    exported.  */
     unsigned int expanding:1;	/* Nonzero if currently being expanded.  */
+    unsigned int private_var:1; /* Nonzero avoids inheritance of this
+                                   target-specific variable.  */
     unsigned int exp_count:EXP_COUNT_BITS;
                                 /* If >1, allow this many self-referential
                                    expansions.  */
 #ifdef CONFIG_WITH_RDONLY_VARIABLE_VALUE
     unsigned int rdonly_val:1;  /* VALUE is read only (strcache/const). */
+#endif
+#ifdef KMK
+    unsigned int alias:1;       /* Nonzero if alias. VALUE points to the real variable. */
+    unsigned int aliased:1;     /* Nonzero if aliased. Cannot be undefined. */
 #endif
     enum variable_flavor
       flavor ENUM_BITFIELD (3);	/* Variable flavor.  */
@@ -102,11 +111,48 @@ struct variable
 	v_ifset,		/* Export it if it has a non-default value.  */
 	v_default		/* Decide in target_environment.  */
       } export ENUM_BITFIELD (2);
+#ifdef CONFIG_WITH_COMPILER
+    int recursive_without_dollar : 2; /* 0 if undetermined, 1 if value has no '$' chars, -1 if it has. */
+#endif
 #ifdef CONFIG_WITH_MAKE_STATS
-    unsigned int changes;
-    unsigned int reallocs;
+    unsigned int changes;      /* Variable modification count.  */
+    unsigned int reallocs;     /* Realloc on value count.  */
+    unsigned int references;   /* Lookup count.  */
+    unsigned long long cTicksEvalVal; /* Number of ticks spend in cEvalVal. */
+#endif
+#if defined (CONFIG_WITH_COMPILER) || defined (CONFIG_WITH_MAKE_STATS)
+    unsigned int evalval_count; /* Times used with $(evalval ) or $(evalctx ) since last change. */
+    unsigned int expand_count;  /* Times expanded since last change (not to be confused with exp_count). */
+#endif
+#ifdef CONFIG_WITH_COMPILER
+    struct kmk_cc_evalprog *evalprog;     /* Pointer to evalval/evalctx "program". */
+    struct kmk_cc_expandprog *expandprog; /* Pointer to variable expand "program". */
 #endif
   };
+
+/* Update statistics and invalidates optimizations when a variable changes. */
+#ifdef CONFIG_WITH_COMPILER
+# define VARIABLE_CHANGED(v) \
+  do { \
+      MAKE_STATS_2((v)->changes++); \
+      if ((v)->evalprog || (v)->expandprog) kmk_cc_variable_changed(v); \
+      (v)->expand_count = 0; \
+      (v)->evalval_count = 0; \
+      (v)->recursive_without_dollar = 0; \
+    } while (0)
+#else
+# define VARIABLE_CHANGED(v) MAKE_STATS_2((v)->changes++)
+#endif
+
+/* Macro that avoids a lot of CONFIG_WITH_COMPILER checks when
+   accessing recursive_without_dollar. */
+#ifdef CONFIG_WITH_COMPILER
+# define IS_VARIABLE_RECURSIVE_WITHOUT_DOLLAR(v) ((v)->recursive_without_dollar > 0)
+#else
+# define IS_VARIABLE_RECURSIVE_WITHOUT_DOLLAR(v) 0
+#endif
+
+
 
 /* Structure that represents a variable set.  */
 
@@ -121,6 +167,7 @@ struct variable_set_list
   {
     struct variable_set_list *next;	/* Link in the chain.  */
     struct variable_set *set;		/* Variable set.  */
+    int next_is_parent;                 /* True if next is a parent target.  */
   };
 
 /* Structure used for pattern-specific variables.  */
@@ -136,14 +183,19 @@ struct pattern_var
 
 extern char *variable_buffer;
 extern struct variable_set_list *current_variable_set_list;
+extern struct variable *default_goal_var;
+
 #ifdef KMK
+extern struct variable_set global_variable_set;
+extern struct variable_set_list global_setlist;
 extern unsigned int variable_buffer_length;
-#define VARIABLE_BUFFER_ZONE    5
+# define VARIABLE_BUFFER_ZONE   5
 #endif
 
 /* expand.c */
 #ifndef KMK
-char *variable_buffer_output (char *ptr, const char *string, unsigned int length);
+char *
+variable_buffer_output (char *ptr, const char *string, unsigned int length);
 #else /* KMK */
 /* Subroutine of variable_expand and friends:
    The text to add is LENGTH chars starting at STRING to the variable_buffer.
@@ -208,9 +260,11 @@ void recycle_variable_buffer (char *buffer, unsigned int length);
 #endif /* CONFIG_WITH_VALUE_LENGTH */
 char *expand_argument (const char *str, const char *end);
 #ifndef CONFIG_WITH_VALUE_LENGTH
-char *variable_expand_string (char *line, const char *string, long length);
+char *
+variable_expand_string (char *line, const char *string, long length);
 #else  /* CONFIG_WITH_VALUE_LENGTH */
-char *variable_expand_string_2 (char *line, const char *string, long length, char **eol);
+char *
+variable_expand_string_2 (char *line, const char *string, long length, char **eol);
 __inline static char *
 variable_expand_string (char *line, const char *string, long length)
 {
@@ -219,7 +273,9 @@ variable_expand_string (char *line, const char *string, long length)
 }
 #endif /* CONFIG_WITH_VALUE_LENGTH */
 void install_variable_buffer (char **bufp, unsigned int *lenp);
+char *install_variable_buffer_with_hint (char **bufp, unsigned int *lenp, unsigned int size_hint);
 void restore_variable_buffer (char *buf, unsigned int len);
+char *ensure_variable_buffer_space(char *ptr, unsigned int size);
 #ifdef CONFIG_WITH_VALUE_LENGTH
 void append_expanded_string_to_variable (struct variable *v, const char *value,
                                          unsigned int value_len, int append);
@@ -230,6 +286,12 @@ void append_expanded_string_to_variable (struct variable *v, const char *value,
 int handle_function (char **op, const char **stringp);
 #else
 int handle_function (char **op, const char **stringp, const char *nameend, const char *eol);
+#endif
+#ifdef CONFIG_WITH_COMPILER
+typedef char *(*make_function_ptr_t) (char *, char **, const char *);
+make_function_ptr_t lookup_function_for_compiler (const char *name, unsigned int len,
+                                                  unsigned char *minargsp, unsigned char *maxargsp,
+                                                  char *expargsp, const char **funcnamep);
 #endif
 int pattern_matches (const char *pattern, const char *percent, const char *str);
 char *subst_expand (char *o, const char *text, const char *subst,
@@ -295,6 +357,9 @@ char *recursively_expand_for_file (struct variable *v, struct file *file,
                                    unsigned int *value_lenp);
 #define recursively_expand(v)   recursively_expand_for_file (v, NULL, NULL)
 #endif
+#ifdef CONFIG_WITH_COMPILER
+char *reference_recursive_variable (char *o, struct variable *v);
+#endif
 
 /* variable.c */
 struct variable_set_list *create_new_variable_set (void);
@@ -313,15 +378,10 @@ struct variable *do_variable_definition (const struct floc *flocp,
                                          enum variable_origin origin,
                                          enum variable_flavor flavor,
                                          int target_var);
-struct variable *parse_variable_definition (struct variable *v, char *line);
-struct variable *try_variable_definition (const struct floc *flocp, char *line,
-                                          enum variable_origin origin,
-                                          int target_var);
 #else  /* CONFIG_WITH_VALUE_LENGTH */
 # define do_variable_definition(flocp, varname, value, origin, flavor, target_var) \
     do_variable_definition_2 ((flocp), (varname), (value), ~0U, 0, NULL, \
                               (origin), (flavor), (target_var))
-
 struct variable *do_variable_definition_2 (const struct floc *flocp,
                                            const char *varname,
                                            const char *value,
@@ -330,22 +390,30 @@ struct variable *do_variable_definition_2 (const struct floc *flocp,
                                            enum variable_origin origin,
                                            enum variable_flavor flavor,
                                            int target_var);
-struct variable *parse_variable_definition (struct variable *v, char *line,
-                                            char *eos);
-struct variable *try_variable_definition (const struct floc *flocp, char *line,
-                                          char *eos,
+#endif /* CONFIG_WITH_VALUE_LENGTH */
+char *parse_variable_definition (const char *line,
+                                          enum variable_flavor *flavor);
+struct variable *assign_variable_definition (struct variable *v, char *line IF_WITH_VALUE_LENGTH_PARAM(char *eos));
+struct variable *try_variable_definition (const struct floc *flocp, char *line
+                                          IF_WITH_VALUE_LENGTH_PARAM(char *eos),
                                           enum variable_origin origin,
                                           int target_var);
-#endif /* CONFIG_WITH_VALUE_LENGTH */
 void init_hash_global_variable_set (void);
 void hash_init_function_table (void);
 struct variable *lookup_variable (const char *name, unsigned int length);
 struct variable *lookup_variable_in_set (const char *name, unsigned int length,
                                          const struct variable_set *set);
+#ifdef CONFIG_WITH_STRCACHE2
+struct variable *lookup_variable_strcached (const char *name);
+#endif
 
 #ifdef CONFIG_WITH_VALUE_LENGTH
 void append_string_to_variable (struct variable *v, const char *value,
                                 unsigned int value_len, int append);
+struct variable * do_variable_definition_append (const struct floc *flocp, struct variable *v,
+                                                 const char *value, unsigned int value_len,
+                                                 int simple_value, enum variable_origin origin,
+                                                 int append);
 
 struct variable *define_variable_in_set (const char *name, unsigned int length,
                                          const char *value,
@@ -364,6 +432,12 @@ struct variable *define_variable_in_set (const char *name, unsigned int length,
 
 #define define_variable_vl(n,l,v,vl,dv,o,r) \
           define_variable_in_set((n),(l),(v),(vl),(dv),(o),(r),\
+                                 current_variable_set_list->set,NILF)
+
+/* Define a variable with a constant name in the current variable set.  */
+
+#define define_variable_cname(n,v,o,r) \
+          define_variable_in_set((n),(sizeof (n) - 1),(v),~0U,1,(o),(r),\
                                  current_variable_set_list->set,NILF)
 
 /* Define a variable with a location in the current variable set.  */
@@ -400,6 +474,12 @@ struct variable *define_variable_in_set (const char *name, unsigned int length,
           define_variable_in_set((n),(l),(v),(o),(r),\
                                  current_variable_set_list->set,NILF)           /* force merge conflict */
 
+/* Define a variable with a constant name in the current variable set.  */
+
+#define define_variable_cname(n,v,o,r) \
+          define_variable_in_set((n),(sizeof (n) - 1),(v),(o),(r),\
+                                 current_variable_set_list->set,NILF)           /* force merge conflict */
+
 /* Define a variable with a location in the current variable set.  */
 
 #define define_variable_loc(n,l,v,o,r,f) \
@@ -417,6 +497,22 @@ struct variable *define_variable_in_set (const char *name, unsigned int length,
           define_variable_in_set((n),(l),(v),(o),(r),(f)->variables->set,NILF)  /* force merge conflict */
 
 #endif /* !CONFIG_WITH_VALUE_LENGTH */
+
+void undefine_variable_in_set (const char *name, unsigned int length,
+                                         enum variable_origin origin,
+                                         struct variable_set *set);
+
+/* Remove variable from the current variable set. */
+
+#define undefine_variable_global(n,l,o) \
+          undefine_variable_in_set((n),(l),(o),NULL)
+
+#ifdef KMK
+struct variable *
+define_variable_alias_in_set (const char *name, unsigned int length,
+                              struct variable *target, enum variable_origin origin,
+                              struct variable_set *set, const struct floc *flocp);
+#endif
 
 /* Warn that NAME is an undefined variable.  */
 
@@ -443,3 +539,4 @@ extern struct strcache2 variable_strcache;
 #define MAKELEVEL_NAME "MAKELEVEL"
 #endif
 #define MAKELEVEL_LENGTH (sizeof (MAKELEVEL_NAME) - 1)
+
