@@ -23,6 +23,7 @@ BuildRequires:  flex
 BuildRequires:  libacl-devel
 BuildRequires:  gettext-devel
 BuildRequires:  byacc
+BuildRequires:  texinfo
 Summary:        Framework for writing simple makefiles for complex tasks
 License:        GPL-2.0+
 Group:          Development/Tools/Building
